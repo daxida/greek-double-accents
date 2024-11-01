@@ -34,7 +34,12 @@ VOWEL_ACCENTED = re.compile(r"[έόίύάήώ]")
 
 # These words are parsed as trisyllables by syllabify
 # but they actually have only two syllables.
-FALSE_TRISYL = {"χέρια", "μάτια", "πόδια", "λόγια", "δίκιο", "δίκια", "σπίτια"}
+FALSE_TRISYL = {"δίκιο", "δίκια", "λόγια"}
+neuters_path = Path(__file__).parent / "etc/neuters.txt"
+with neuters_path.open("r", encoding="utf-8") as f:
+    FALSE_TRISYL |= set(f.read().splitlines())
+print(len(FALSE_TRISYL))
+
 
 # Grammar
 # http://ebooks.edu.gr/ebooks/v/html/8547/2009/Grammatiki_E-ST-Dimotikou_html-apli/index_C8a.html
@@ -164,7 +169,10 @@ class Entry:
 
     def show_semantic_info(self) -> None:
         wi = self
-        assert wi.semantic_info
+        if not wi.semantic_info:
+            print("No semantic info")
+            return
+
         try:
             si1, si2, si3 = wi.semantic_info
         except Exception as e:
@@ -230,10 +238,11 @@ def analyze_text(text: str, replace: bool) -> str:
                         new_line.append(word)
                     else:
                         state = info.statemsg.state
+                        msg = info.statemsg.msg
                         n_entries_total += 1
                         record[state] += 1
 
-                        if state == State.INCORRECT and replace:
+                        if replace and state == State.INCORRECT and msg != "2PUNCT":
                             new_line.append(add_accent(word))
                         else:
                             new_line.append(word)
@@ -276,11 +285,15 @@ def analyze_line(line: str, lineno: int, n_entries_total: int) -> list[tuple[str
             line_info.append((word, None))
             continue
 
-        print(entry)
-
-        # Debug print semantic info if PENDING
-        if entry.statemsg.state == State.PENDING:
-            entry.show_semantic_info()
+        # Print information
+        if entry.statemsg.state == State.INCORRECT:
+            if entry.statemsg.msg != "2PUNCT":
+                print(entry)
+                entry.show_semantic_info()
+        # print(entry)
+        # # Debug print semantic info if PENDING
+        # if entry.statemsg.state == State.PENDING:
+        #     entry.show_semantic_info()
 
         line_info.append((word, entry))
         states.append(entry.statemsg.state)
@@ -358,13 +371,6 @@ def semantic_analysis(wi: Entry) -> StateMsg:
     match pos1:
         case "VERB":
             return StateMsg(State.PENDING, "1VERB")
-        case "PROPN":
-            # High chance of being correct
-            if pos3 == "VERB":
-                # CEx: Ο Άνγελός μου είπε...
-                return StateMsg(State.AMBIGUOUS, "1PROPN 3VERB")
-            else:
-                return StateMsg(State.CORRECT, "1PROPN")
         case "NOUN":
             # The pronoun must be genitive
             if w2 not in PRON_GEN:
@@ -377,6 +383,14 @@ def semantic_analysis(wi: Entry) -> StateMsg:
                 case "VERB":
                     # CEx: Το άνθρωπο της έδωσε / Το άνθρωπο τής έδωσε.
                     return StateMsg(State.AMBIGUOUS, "1NOUN 3VERB")
+                case "ADP":
+                    # στα, στο, στην κτλ.
+                    # Ex: τον Βασίλειο σας στην Τριαδίτσα.
+                    return StateMsg(State.INCORRECT, "1NOUN 3ADP")
+                case "CCONJ":
+                    # και, κι
+                    # Ex: τα γόνατα της και σωριάστηκε στο...
+                    return StateMsg(State.INCORRECT, "1NOUN 3CCONJ")
 
             return StateMsg(State.PENDING, "1NOUN")
         case "ADJ":
@@ -394,6 +408,13 @@ def semantic_analysis(wi: Entry) -> StateMsg:
                     return StateMsg(State.AMBIGUOUS, "1ADJ 3VERB")
 
             return StateMsg(State.PENDING, "1ADJ")
+        case "PROPN":
+            # High chance of being correct
+            if pos3 == "VERB":
+                # CEx: Ο Άνγελός μου είπε...
+                return StateMsg(State.AMBIGUOUS, "1PROPN 3VERB")
+            else:
+                return StateMsg(State.CORRECT, "1PROPN")
         case "ADV":
             return StateMsg(State.CORRECT, "1ADV")
 
@@ -401,15 +422,16 @@ def semantic_analysis(wi: Entry) -> StateMsg:
 
 
 def main(replace: bool = True) -> None:
-    filepath = Path("book.txt")
+    filepath = Path(__file__).parent / "etc/book.txt"
     with filepath.open("r", encoding="utf-8") as file:
         text = file.read().strip()
         new_text = analyze_text(text, replace)
 
     if replace:
-        with filepath.open("w", encoding="utf-8") as file:
+        opath = filepath.with_stem("book_fix")
+        with opath.open("w", encoding="utf-8") as file:
             file.write(new_text)
-        print(f"The text has been updated in '{filepath}'.")
+        print(f"The text has been updated in '{opath}'.")
 
 
 if __name__ == "__main__":
