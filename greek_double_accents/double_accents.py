@@ -19,11 +19,18 @@ import spacy.cli
 # pip install greek-accentuation==1.2.0
 from greek_accentuation.accentuation import syllable_add_accent
 from greek_accentuation.syllabify import ACUTE, syllabify
+from spacy.tokens import Doc
+
 from .constants import (
     FALSE_TRISYL,
     PRON,
     PRON_GEN,
 )
+
+PUNCT = re.compile(r"[,.!?;:\n«»\"'·…]")
+VOWEL_ACCENTED = re.compile(r"[έόίύάήώ]")
+
+# Import spacy model: greek small.
 model_name = "el_core_news_sm"
 try:
     nlp = spacy.load(model_name)
@@ -54,6 +61,9 @@ class StateMsg:
     msg: str
 
 
+DEFAULT_STATEMSG = StateMsg(State.PENDING, "TODO")
+
+
 @dataclass
 class Entry:
     word: str
@@ -62,7 +72,7 @@ class Entry:
     line_number: int = 0
     entry_id: int = 0
     # Otherwise mutable default error etc.
-    statemsg: StateMsg = field(default_factory=lambda: StateMsg(State.AMBIGUOUS, "TODO"))
+    statemsg: StateMsg = field(default_factory=lambda: DEFAULT_STATEMSG)
     semantic_info: list[dict[str, str]] | None = None
     # words?
 
@@ -72,14 +82,12 @@ class Entry:
             self.line[max(0, self.word_idx - 1) : min(len(self.line), self.word_idx + 5)]
         )
 
-    def add_semantic_info(self) -> None:
+    def add_semantic_info(self, doc: Doc) -> None:
         assert self.word_idx < len(self.line) - 2, "Faulty sentence with no final punctuation."
 
         words = [split_punctuation(w)[0] for w in self.line[self.word_idx : self.word_idx + 3]]
         self.words = words
         assert len(words) == 3
-
-        doc = nlp(" ".join(self.line))
 
         # TODO: Keep the tokens for the whole sentence to debug
 
@@ -219,9 +227,10 @@ def analyze_line(line: str, lineno: int, n_entries_total: int) -> list[tuple[str
     cnt = 0
     states = []
     line_info = []
+    cached_doc = None
 
     for idx, word in enumerate(words):
-        if simple_checks(word, idx, len(words)):
+        if simple_word_checks(word, idx, len(words)):
             line_info.append((word, None))
             continue
 
@@ -229,7 +238,12 @@ def analyze_line(line: str, lineno: int, n_entries_total: int) -> list[tuple[str
         entry = Entry(word, idx, words, lineno, n_entries_total + cnt)
         cnt += 1
 
-        statemsg = fix_entry(entry)
+        statemsg = simple_entry_checks(entry)
+        if statemsg == DEFAULT_STATEMSG:
+            cached_doc = cached_doc or nlp(line)
+            entry.add_semantic_info(cached_doc)
+            statemsg = semantic_analysis(entry)
+
         entry.statemsg = statemsg
 
         # Tested to correctly work: ignore them
@@ -254,7 +268,7 @@ def analyze_line(line: str, lineno: int, n_entries_total: int) -> list[tuple[str
     return line_info
 
 
-def simple_checks(word: str, idx: int, lwords: int) -> bool:
+def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
     """Discard a word based on punctuation and number of syllables.
     Returns True if we can discard the word, False otherwise.
     """
@@ -278,7 +292,8 @@ def simple_checks(word: str, idx: int, lwords: int) -> bool:
     return False
 
 
-def fix_entry(entry: Entry) -> StateMsg:
+def simple_entry_checks(entry: Entry) -> StateMsg:
+    """Does NOT use semantic analysis."""
     # Verify that the word is not banned (False trisyllables)
     if entry.word in FALSE_TRISYL:
         return StateMsg(State.CORRECT, "1~3SYL")
@@ -288,13 +303,11 @@ def fix_entry(entry: Entry) -> StateMsg:
     if detpron not in PRON:
         return StateMsg(State.CORRECT, "2~PRON")
 
+    # This is a mistake and it is fixable
     if punct:
-        # This is a mistake and it is fixable
         return StateMsg(State.INCORRECT, "2PUNCT")
-    else:
-        # Semantic analysis
-        entry.add_semantic_info()
-        return semantic_analysis(entry)
+
+    return DEFAULT_STATEMSG
 
 
 def semantic_analysis(wi: Entry) -> StateMsg:
@@ -371,7 +384,7 @@ def semantic_analysis(wi: Entry) -> StateMsg:
         case "ADV":
             return StateMsg(State.CORRECT, "1ADV")
 
-    return StateMsg(State.PENDING, "TODO")
+    return DEFAULT_STATEMSG
 
 
 def main(replace: bool = True) -> None:
