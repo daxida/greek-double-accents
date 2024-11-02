@@ -19,7 +19,11 @@ import spacy.cli
 # pip install greek-accentuation==1.2.0
 from greek_accentuation.accentuation import syllable_add_accent
 from greek_accentuation.syllabify import ACUTE, syllabify
-
+from .constants import (
+    FALSE_TRISYL,
+    PRON,
+    PRON_GEN,
+)
 model_name = "el_core_news_sm"
 try:
     nlp = spacy.load(model_name)
@@ -28,57 +32,6 @@ except OSError:
     print(f"Model '{model_name}' not found. Downloading...")
     spacy.cli.download(model_name)
     nlp = spacy.load(model_name)
-
-PUNCT = re.compile(r"[,.!?;:\n«»\"'·…]")
-VOWEL_ACCENTED = re.compile(r"[έόίύάήώ]")
-
-# These words are parsed as trisyllables by syllabify
-# but they actually have only two syllables.
-FALSE_TRISYL = {"δίκιο", "δίκια", "λόγια"}
-neuters_path = Path(__file__).parent / "etc/neuters.txt"
-with neuters_path.open("r", encoding="utf-8") as f:
-    FALSE_TRISYL |= set(f.read().splitlines())
-print(len(FALSE_TRISYL))
-
-
-# Grammar
-# http://ebooks.edu.gr/ebooks/v/html/8547/2009/Grammatiki_E-ST-Dimotikou_html-apli/index_C8a.html
-PRON_ACC_SING = {
-    "με",
-    "σε",
-    "τον",
-    "την",
-    "τη",
-    "το",
-}
-
-PRON_ACC_PLUR = {
-    "μας",
-    "σας",
-    "τους",
-    "τις",
-    "τα",
-}
-
-PRON_ACC = {*PRON_ACC_SING, *PRON_ACC_PLUR}
-
-PRON_GEN_SING = {
-    "μου",
-    "σου",
-    "του",
-    "της",
-    "του",
-}
-
-PRON_GEN_PLUR = {
-    "μας",
-    "σας",
-    "τους",
-}
-
-PRON_GEN = {*PRON_GEN_SING, *PRON_GEN_PLUR}
-
-PRON = {*PRON_ACC, *PRON_GEN}
 
 
 def split_punctuation(word: str) -> tuple[str, str | None]:
