@@ -122,6 +122,7 @@ class Entry:
                         "DET",
                         "PRON",
                         "ADP",  # με
+                        # FIXME: ADP should always be correct 'με φρίκη' etc.
                     ), f"Unexpected pos {token.pos_} from {token.text}"
             semantic_info[idx]["case"] = token.morph.get("Case", ["X"])[0]
 
@@ -129,17 +130,22 @@ class Entry:
 
         self.semantic_info = semantic_info
 
-    def show_semantic_info(self) -> None:
+    def show_semantic_info(self, detail: bool = False) -> None:
         wi = self
         if not wi.semantic_info:
             print("No semantic info")
             return
 
+        cyan = "\033[36m"
+        cend = "\033[0m"
+
         si1, si2, si3 = wi.semantic_info
-        pos1 = si1["pos"]
-        pos2 = si2["pos"]
-        pos3 = si3["pos"]
-        print(pos1, pos2, pos3, " || ", si1["case"], si2["case"], si3["case"])
+        semantic_info = (
+            f"{cyan}{si1['pos']} {si2['pos']} {si3['pos']}"
+            " || "
+            f"{si1['case']} {si2['case']} {si3['case']}{cend}"
+        )
+        print(self if detail else "", semantic_info)
 
     def detailed_str(self) -> str:
         hstart = "\033[1m"
@@ -167,7 +173,7 @@ def add_accent(word: str) -> str:
     return "".join(nsyls)
 
 
-def analyze_text(text: str, replace: bool, states: list[State]) -> str:
+def analyze_text(text: str, replace: bool, print_states: list[State]) -> str:
     paragraphs = text.splitlines()
     n_entries_total = 0
     record = {
@@ -188,7 +194,7 @@ def analyze_text(text: str, replace: bool, states: list[State]) -> str:
             new_line = []
             if line := line.strip():
                 # print(f"[{parno}:{lineno}] Line:", line, "\n", paragraph)
-                line_info = analyze_line(line, parno, n_entries_total, states)
+                line_info = analyze_line(line, parno, n_entries_total, print_states)
                 for word, info in line_info:
                     if info is None:
                         new_line.append(word)
@@ -255,8 +261,7 @@ def analyze_line(
         # Print information
         if entry.statemsg.state in print_states:
             if entry.statemsg.msg != "2PUNCT":
-                print(entry)
-                entry.show_semantic_info()
+                entry.show_semantic_info(detail=True)
         # print(entry)
         # # Debug print semantic info if PENDING
         # if entry.statemsg.state == State.PENDING:
@@ -405,12 +410,12 @@ def parse_args() -> list[State]:
 
 
 def main(replace: bool = True) -> None:
-    args_states = parse_args()
+    print_states = parse_args()
 
     filepath = Path(__file__).parent / "etc/book.txt"
     with filepath.open("r", encoding="utf-8") as file:
         text = file.read().strip()
-        new_text = analyze_text(text, replace, args_states)
+        new_text = analyze_text(text, replace, print_states)
 
     if replace:
         opath = filepath.with_stem("book_fix")
