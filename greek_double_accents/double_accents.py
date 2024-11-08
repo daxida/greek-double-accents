@@ -13,6 +13,7 @@ from argparse import Namespace
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from time import time
 
 import spacy
 import spacy.cli
@@ -438,7 +439,10 @@ def main(replace: bool = True) -> None:
     filepath = Path(__file__).parent / "etc/book.txt"
     with filepath.open("r", encoding="utf-8") as file:
         text = file.read().strip()
-        new_text = analyze_text(text, replace, args)
+
+    start = time()
+    new_text = analyze_text(text, replace, args)
+    print(f"Ellapsed {time() - start:.3f}sec")
 
     if replace:
         opath = filepath.with_stem("book_fix")
