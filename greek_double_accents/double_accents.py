@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from time import time
-from typing import Any
+from typing import Any, Literal
 
 import spacy
 import spacy.cli
@@ -39,7 +39,7 @@ PUNCT = re.compile(r"[,.!?;:\n«»\"'·…]")
 VOWEL_ACCENTED = re.compile(r"[έόίύάήώ]")
 
 # Import spacy model: greek small.
-model_name = "el_core_news_sm"
+model_name = "el_core_news_sm"  # sm / md / lg
 try:
     nlp = spacy.load(model_name)
     # print(nlp.path)
@@ -93,7 +93,8 @@ class Entry:
         ctx = " ".join(self.line[fr:to])
         return f"{ctx} {continues_msg}"
 
-    def add_semantic_info(self, doc: Doc) -> None:
+    def add_semantic_info(self, doc: Doc) -> Literal[0, 1]:
+        """Returns 0 in case of success."""
         assert self.word_idx < len(self.line) - 2, "Faulty sentence with no final punctuation."
 
         words = [split_punctuation(w)[0] for w in self.line[self.word_idx : self.word_idx + 3]]
@@ -115,7 +116,12 @@ class Entry:
                     break
             else:
                 doc_buf = []
-        assert len(doc_buf) == 3
+
+        # Can happen if a word in words gets wrongly tagged as PUNCT:
+        # Ex. ('δέχεσαι', 'PUNCT')
+        if not len(doc_buf) == 3:
+            print(f"Warning: doc_buf is of size < 3 for {self.word}")
+            return 1
 
         # The key can't be the word in case of duplicates:
         # words = ['φρούριο', 'σε', 'φρούριο']
@@ -132,6 +138,7 @@ class Entry:
                         "DET",
                         "PRON",
                         "ADP",  # με
+                        "PROPN",  # μου ???
                         # FIXME: ADP should always be correct 'με φρίκη' etc.
                     ), f"Unexpected pos {token.pos_} from {token.text}"
             semantic_info[idx]["case"] = token.morph.get("Case", ["X"])[0]
@@ -145,6 +152,8 @@ class Entry:
         assert len(semantic_info) == 3, f"{semantic_info}\n{words}\n{self.word} || {self.line}"
 
         self.semantic_info = semantic_info
+
+        return 0
 
     def show_semantic_info(self, detail: bool = False) -> None:
         wi = self
@@ -176,7 +185,8 @@ class Entry:
         }
 
         color = state_colors.get(self.statemsg.state, "\033[0m")
-        return f"{color}{str(self.statemsg.state)[6:]:<9} [{self.statemsg.msg:<12}]{hend} {hctx}"
+        state_let = str(self.statemsg.state)[0]
+        return f"{color}[{state_let} {self.statemsg.msg:<12}]{hend} {hctx}"
 
     def __str__(self) -> str:
         # return f"{self.state:<15} {self.get_line_ctx}"
@@ -277,7 +287,11 @@ def analyze_line(
         statemsg = simple_entry_checks(entry)
         if statemsg == DEFAULT_STATEMSG:
             cached_doc = cached_doc or nlp(line)
-            entry.add_semantic_info(cached_doc)
+            error_code = entry.add_semantic_info(cached_doc)
+            if error_code != 0:
+                entry.statemsg = StateMsg(State.AMBIGUOUS, "SEMFAIL")
+                line_info.append((word, entry))
+                continue
             statemsg = semantic_analysis(entry)
 
         entry.statemsg = statemsg
@@ -342,20 +356,20 @@ def simple_entry_checks(entry: Entry) -> StateMsg:
     return DEFAULT_STATEMSG
 
 
-def semantic_analysis(wi: Entry) -> StateMsg:  # noqa: C901
+def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
     """Return True if correct, False if incorrect or undecidable."""
-    if not wi.semantic_info:
+    if not entry.semantic_info:
         print("Warning: this should only happen in tests")
-        doc = nlp(" ".join(wi.line))
-        wi.add_semantic_info(doc)
+        doc = nlp(" ".join(entry.line))
+        entry.add_semantic_info(doc)
 
-    if not wi.semantic_info:
-        raise ValueError("No semantic info added.")
+    if not entry.semantic_info:
+        raise ValueError(f"No semantic info for {entry.word}.")
 
-    w1, w2, _ = wi.words[:3]
-    si1, si2, si3 = wi.semantic_info
+    w1, w2, _ = entry.words[:3]
+    si1, si2, si3 = entry.semantic_info
     pos1 = si1["pos"]
-    # pos2 = si2["pos"]
+    pos2 = si2["pos"]
     pos3 = si3["pos"]
 
     if "X" in (pos1 + pos3):
@@ -377,9 +391,26 @@ def semantic_analysis(wi: Entry) -> StateMsg:  # noqa: C901
             # Use morph::VerbForm::Conv for βλέποντας, σφίγγοντας... i.e.
             # if si1["morph"].get("VerbForm", ["X"])[0] == "Conv":
             if w1.endswith(("οντας", "ωντας")):
+                # Base rule
+                if pos2 == "PRON":
+                    return StateMsg(State.INCORRECT, "1VERBP 2PRON")
+
+                # Γρηγόρης, γυρεύοντας με τον ήσυχο τόνο [...]
+                # χέρι, σκοντάφτοντας σε κάθε βήμα...
+                if pos2 == "ADP":
+                    return StateMsg(State.CORRECT, "1VERBP 2ADP")
+
                 # Ex. ζυγώνοντας τον άρπαξε
                 if pos3 == "VERB":
-                    return StateMsg(State.INCORRECT, "1VERBP3VERB")
+                    return StateMsg(State.INCORRECT, "1VERBP 3VERB")
+
+                # There are counter examples but there are very rare
+                # and idiomatic (set phrases).
+                # CEx. βλέποντάς τον σπίτι έφυγε...
+                if pos3 == "NOUN" and w2 not in PRON_GEN:
+                    return StateMsg(State.CORRECT, f"1VERBP 2{w2}~GEN 3NOUN")
+                if pos3 == "PROPN" and w2 not in PRON_GEN:
+                    return StateMsg(State.CORRECT, f"1VERBP 2{w2}~GEN 3PROPN")
 
                 return StateMsg(State.PENDING, "1VERBP")
 
@@ -400,6 +431,11 @@ def semantic_analysis(wi: Entry) -> StateMsg:  # noqa: C901
             # (2.2.) Same reasoning for 1PL
             if person == "1" and number == "Plur":
                 return StateMsg(State.CORRECT, "1VERB1PL")
+
+            # άφησέ τον ήσυχο
+            # αφήνοντάς τον ήσυχο
+            if pos3 == "ADJ":
+                return StateMsg(State.AMBIGUOUS, "1VERB 3ADJ")
 
             return StateMsg(State.PENDING, "1VERB")
         case "NOUN":
