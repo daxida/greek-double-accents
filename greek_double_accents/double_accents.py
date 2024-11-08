@@ -1,19 +1,22 @@
 """
 TODO:
-- Clean
-- Time it
-- Make some tests
+- Make some tests > Detect False positives
+- Does spacy syllabify? Yes, but low priority (sillabify is fast)
 
-Does spacy syllabify?
+The states need to share prefixes based on detail:
+1VERB > 1VERB 3ADJ etc.
+This makes for easier debugging
 """
 
 import argparse
 import re
 from argparse import Namespace
+from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from time import time
+from typing import Any
 
 import spacy
 import spacy.cli
@@ -42,7 +45,7 @@ try:
     # print(nlp.path)
 except OSError:
     print(f"Model '{model_name}' not found. Downloading...")
-    spacy.cli.download(model_name)
+    spacy.cli.download(model_name)  # type: ignore
     nlp = spacy.load(model_name)
 
 
@@ -78,7 +81,7 @@ class Entry:
     entry_id: int = 0
     # Otherwise mutable default error etc.
     statemsg: StateMsg = field(default_factory=lambda: DEFAULT_STATEMSG)
-    semantic_info: list[dict[str, str]] | None = None
+    semantic_info: list[dict[str, Any]] | None = None
     # words?
 
     @property
@@ -189,12 +192,8 @@ def add_accent(word: str) -> str:
 def analyze_text(text: str, replace: bool, args: Namespace) -> str:
     paragraphs = text.splitlines()
     n_entries_total = 0
-    record = {
-        State.CORRECT: 0,
-        State.INCORRECT: 0,
-        State.PENDING: 0,
-        State.AMBIGUOUS: 0,
-    }
+    record_states = Counter()
+    record_msgs = Counter()
 
     line_re = re.compile(r"[^.!?;:…»]+(?:[.!?;:…»\n]+,?)?")
     new_text = []
@@ -203,7 +202,7 @@ def analyze_text(text: str, replace: bool, args: Namespace) -> str:
         new_paragraph = []
         par_lines = line_re.findall(paragraph)
 
-        for lineno, line in enumerate(par_lines, start=1):
+        for _, line in enumerate(par_lines, start=1):
             new_line = []
             if line := line.strip():
                 # print(f"[{parno}:{lineno}] Line:", line, "\n", paragraph)
@@ -213,9 +212,10 @@ def analyze_text(text: str, replace: bool, args: Namespace) -> str:
                         new_line.append(word)
                     else:
                         state = info.statemsg.state
-                        msg = info.statemsg.msg
+                        msg: str = info.statemsg.msg
                         n_entries_total += 1
-                        record[state] += 1
+                        record_states[state] += 1
+                        record_msgs[msg] += 1
 
                         if replace and state == State.INCORRECT and msg != "2PUNCT":
                             new_line.append(add_accent(word))
@@ -229,19 +229,28 @@ def analyze_text(text: str, replace: bool, args: Namespace) -> str:
         if n_entries_total >= 7000:
             break
 
-    print_summary(n_entries_total, record)
+    print_summary(n_entries_total, record_states, record_msgs)
 
     return "\n".join(new_text)
 
 
-def print_summary(n_entries_total: int, record: dict[State, int]) -> None:
+def print_summary(
+    n_entries_total: int,
+    record_states: Counter,
+    record_msgs: Counter,
+) -> None:
     print(f"\nFound {n_entries_total} candidates.")
     total = 0
-    for state, cnt in record.items():
+    for state, cnt in record_states.items():
         total += cnt
         print(f"{str(state)[6:]:<9} {cnt}")
+    print()
     assert total == n_entries_total
-    not_pending = total - record[State.PENDING]
+
+    mf_key, mf_count = record_msgs.most_common(1)[0]
+    print(f"The most frequent msg is: '{mf_key}' ({mf_count} times).")
+
+    not_pending = total - record_states[State.PENDING]
     print(f"Coverage  {not_pending / total:.02f}%")
 
 
@@ -333,7 +342,7 @@ def simple_entry_checks(entry: Entry) -> StateMsg:
     return DEFAULT_STATEMSG
 
 
-def semantic_analysis(wi: Entry) -> StateMsg:
+def semantic_analysis(wi: Entry) -> StateMsg:  # noqa: C901
     """Return True if correct, False if incorrect or undecidable."""
     if not wi.semantic_info:
         print("Warning: this should only happen in tests")
@@ -343,18 +352,18 @@ def semantic_analysis(wi: Entry) -> StateMsg:
     if not wi.semantic_info:
         raise ValueError("No semantic info added.")
 
-    w1, w2, w3 = wi.words[:3]
+    w1, w2, _ = wi.words[:3]
     si1, si2, si3 = wi.semantic_info
     pos1 = si1["pos"]
-    pos2 = si2["pos"]
+    # pos2 = si2["pos"]
     pos3 = si3["pos"]
 
     if "X" in (pos1 + pos3):
         # Ambiguous: incomplete information
         return StateMsg(State.AMBIGUOUS, "NO INFO")
 
-    same_case12 = si1["case"] == si2["case"]
-    same_case13 = si1["case"] == si3["case"]
+    # same_case12 = si1["case"] == si2["case"]
+    # same_case13 = si1["case"] == si3["case"]
     same_case23 = si2["case"] == si3["case"]
 
     match pos1:
