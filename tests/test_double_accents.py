@@ -1,4 +1,24 @@
-from double_accents import Entry, State, StateMsg, fix_entry
+from greek_double_accents.double_accents import (
+    Entry,
+    State,
+    StateMsg,
+    simple_entry_checks,
+    semantic_analysis,
+)
+
+
+def make_test_simple(
+    word: str,
+    word_idx: int,
+    line_str: str,
+    state: State,
+    msg: str,
+) -> None:
+    """No semantic info is needed for this."""
+    entry = Entry(word, word_idx, line_str.split())
+    received: StateMsg = simple_entry_checks(entry)
+    expected = StateMsg(state, msg)
+    assert received == expected
 
 
 def make_test(
@@ -10,22 +30,31 @@ def make_test(
     spacy_checks: dict[str, dict[str, str]] | None = None,
 ) -> None:
     entry = Entry(word, word_idx, line_str.split())
-    received = fix_entry(entry)
+    received: StateMsg = semantic_analysis(entry)
     expected = StateMsg(state, msg)
+
     # (Optional) Test that the spaCy analysis is sound.
     if not spacy_checks is None:
-        si = entry.semantic_info
-        assert not si is None
+        sis = entry.semantic_info
+        assert sis is not None
+
         for sc_word, sc_constraint in spacy_checks.items():
-            assert sc_word in si
-            word_si = si[sc_word]
+            si = None
+            for _si in sis:
+                # Match with the first find
+                if _si["word"] == sc_word:
+                    si = _si
+                    break
+            assert si is not None
+
             for grammar_type, value in sc_constraint.items():
-                assert word_si[grammar_type] == value
+                assert si[grammar_type] == value
+
     assert received == expected
 
 
 def test_incorrect() -> None:
-    make_test(
+    make_test_simple(
         word="πρωτεύουσα",
         word_idx=1,
         line_str="η πρωτεύουσα του.",
@@ -35,7 +64,7 @@ def test_incorrect() -> None:
 
 
 def test_false_trisyllable() -> None:
-    make_test(
+    make_test_simple(
         word="μάτια",
         word_idx=1,
         line_str="τα μάτια του.",

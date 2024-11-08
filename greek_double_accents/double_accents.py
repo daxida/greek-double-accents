@@ -317,8 +317,14 @@ def simple_entry_checks(entry: Entry) -> StateMsg:
 
 def semantic_analysis(wi: Entry) -> StateMsg:
     """Return True if correct, False if incorrect or undecidable."""
+    if not wi.semantic_info:
+        print("Warning: this should only happen in tests")
+        doc = nlp(" ".join(wi.line))
+        wi.add_semantic_info(doc)
 
-    assert wi.semantic_info
+    if not wi.semantic_info:
+        raise ValueError("No semantic info added.")
+
     w1, w2, w3 = wi.words[:3]
     si1, si2, si3 = wi.semantic_info
     pos1 = si1["pos"]
