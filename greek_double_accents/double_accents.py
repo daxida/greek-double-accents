@@ -79,9 +79,12 @@ class Entry:
 
     @property
     def line_ctx(self) -> str:
-        return " ".join(
-            self.line[max(0, self.word_idx - 1) : min(len(self.line), self.word_idx + 5)]
-        )
+        fr = max(0, self.word_idx - 1)
+        to = min(len(self.line), self.word_idx + 5)
+        continues = self.word_idx + 5 < len(self.line)
+        continues_msg = "[...]" if continues else ""
+        ctx = " ".join(self.line[fr:to])
+        return f"{ctx} {continues_msg}"
 
     def add_semantic_info(self, doc: Doc) -> None:
         assert self.word_idx < len(self.line) - 2, "Faulty sentence with no final punctuation."
