@@ -219,11 +219,20 @@ def analyze_text(text: str, replace: bool, print_states: list[State]) -> str:
         if n_entries_total >= 7000:
             break
 
-    print(f"\nFound {n_entries_total} candidates.")
-    for state, cnt in record.items():
-        print(f"{str(state)[6:]:<9} {cnt}")
+    print_summary(n_entries_total, record)
 
     return "\n".join(new_text)
+
+
+def print_summary(n_entries_total: int, record: dict[State, int]) -> None:
+    print(f"\nFound {n_entries_total} candidates.")
+    total = 0
+    for state, cnt in record.items():
+        total += cnt
+        print(f"{str(state)[6:]:<9} {cnt}")
+    assert total == n_entries_total
+    not_pending = total - record[State.PENDING]
+    print(f"Coverage  {not_pending / total:.02f}%")
 
 
 def analyze_line(
