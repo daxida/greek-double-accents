@@ -131,6 +131,12 @@ class Entry:
                     ), f"Unexpected pos {token.pos_} from {token.text}"
             semantic_info[idx]["case"] = token.morph.get("Case", ["X"])[0]
 
+            # Debug
+            # https://universaldependencies.org/u/feat/index.html
+            semantic_info[idx]["token"] = token
+            semantic_info[idx]["morph"] = token.morph
+            semantic_info[idx]["verbForm"] = token.morph.get("VerbForm", ["X"])
+
         assert len(semantic_info) == 3, f"{semantic_info}\n{words}\n{self.word} || {self.line}"
 
         self.semantic_info = semantic_info
@@ -358,6 +364,35 @@ def semantic_analysis(wi: Entry) -> StateMsg:
 
     match pos1:
         case "VERB":
+            # print(w1, si1["pos"], " > ", si1["morph"])
+            # For a verb to have double accents it NEEDS (yet it does not
+            # suffice), to either:
+            # (1) To be a gerund (μετοχή)
+
+            # This is equivalent to:
+            # Use morph::VerbForm::Conv for βλέποντας, σφίγγοντας... i.e.
+            # if si1["morph"].get("VerbForm", ["X"])[0] == "Conv":
+            if w1.endswith(("οντας", "ωντας")):
+                return StateMsg(State.PENDING, "1VERBP")
+
+            # (2) To be an imperative verb (which implies, only 2nd person)
+            #     Unfortunately spaCy is defective when it comes to detect person
+            #     (and it's not easy due to ambiguity); i.e.
+            #     'ρώτησε' is Imperative/2P but also Past/3P
+
+            # Spacy morph::Mood::Imp (Imperative) is defective and detects nothing.
+
+            # (2.1.) Person=3 and Number=Plur should be safe. Ex.
+            # - γέροι έκλαιγαν με λυγμούς.
+            # - την περιτύλιγαν με τα πλούσια σγουρά
+            person = si1["morph"].get("Person", ["X"])[0]
+            number = si1["morph"].get("Number", ["X"])[0]
+            if person == "3" and number == "Plur":
+                return StateMsg(State.CORRECT, "1VERB3PL")
+            # (2.2.) Same reasoning for 1PL
+            if person == "1" and number == "Plur":
+                return StateMsg(State.CORRECT, "1VERB1PL")
+
             return StateMsg(State.PENDING, "1VERB")
         case "NOUN":
             # The pronoun must be genitive
