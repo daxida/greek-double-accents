@@ -7,6 +7,7 @@ TODO:
 Does spacy syllabify?
 """
 
+import argparse
 import re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -134,13 +135,7 @@ class Entry:
             print("No semantic info")
             return
 
-        try:
-            si1, si2, si3 = wi.semantic_info
-        except Exception as e:
-            print(wi.line)
-            print(wi.word)
-            print(wi.semantic_info)
-            raise e
+        si1, si2, si3 = wi.semantic_info
         pos1 = si1["pos"]
         pos2 = si2["pos"]
         pos3 = si3["pos"]
@@ -172,7 +167,7 @@ def add_accent(word: str) -> str:
     return "".join(nsyls)
 
 
-def analyze_text(text: str, replace: bool) -> str:
+def analyze_text(text: str, replace: bool, states: list[State]) -> str:
     paragraphs = text.splitlines()
     n_entries_total = 0
     record = {
@@ -193,7 +188,7 @@ def analyze_text(text: str, replace: bool) -> str:
             new_line = []
             if line := line.strip():
                 # print(f"[{parno}:{lineno}] Line:", line, "\n", paragraph)
-                line_info = analyze_line(line, parno, n_entries_total)
+                line_info = analyze_line(line, parno, n_entries_total, states)
                 for word, info in line_info:
                     if info is None:
                         new_line.append(word)
@@ -222,7 +217,12 @@ def analyze_text(text: str, replace: bool) -> str:
     return "\n".join(new_text)
 
 
-def analyze_line(line: str, lineno: int, n_entries_total: int) -> list[tuple[str, None | Entry]]:
+def analyze_line(
+    line: str,
+    lineno: int,
+    n_entries_total: int,
+    print_states: list[State],
+) -> list[tuple[str, None | Entry]]:
     words = line.split()
     cnt = 0
     states = []
@@ -253,7 +253,7 @@ def analyze_line(line: str, lineno: int, n_entries_total: int) -> list[tuple[str
             continue
 
         # Print information
-        if entry.statemsg.state == State.INCORRECT:
+        if entry.statemsg.state in print_states:
             if entry.statemsg.msg != "2PUNCT":
                 print(entry)
                 entry.show_semantic_info()
@@ -314,14 +314,8 @@ def semantic_analysis(wi: Entry) -> StateMsg:
     """Return True if correct, False if incorrect or undecidable."""
 
     assert wi.semantic_info
-    try:
-        w1, w2, w3 = wi.words[:3]
-        si1, si2, si3 = wi.semantic_info
-    except Exception as e:
-        print(wi.line)
-        print(wi.word)
-        print(wi.semantic_info)
-        raise e
+    w1, w2, w3 = wi.words[:3]
+    si1, si2, si3 = wi.semantic_info
     pos1 = si1["pos"]
     pos2 = si2["pos"]
     pos3 = si3["pos"]
@@ -387,11 +381,36 @@ def semantic_analysis(wi: Entry) -> StateMsg:
     return DEFAULT_STATEMSG
 
 
+def parse_args() -> list[State]:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-s",
+        "--select",
+        type=str,
+        default="I",
+        help="Select states using C (CORRECT), I (INCORRECT), P (PENDING), A (AMBIGUOUS)",
+    )
+
+    args = parser.parse_args()
+
+    state_map = {
+        "C": State.CORRECT,
+        "I": State.INCORRECT,
+        "P": State.PENDING,
+        "A": State.AMBIGUOUS,
+    }
+
+    selected_states = [state_map[char] for char in args.select if char in state_map]
+    return selected_states
+
+
 def main(replace: bool = True) -> None:
+    args_states = parse_args()
+
     filepath = Path(__file__).parent / "etc/book.txt"
     with filepath.open("r", encoding="utf-8") as file:
         text = file.read().strip()
-        new_text = analyze_text(text, replace)
+        new_text = analyze_text(text, replace, args_states)
 
     if replace:
         opath = filepath.with_stem("book_fix")
