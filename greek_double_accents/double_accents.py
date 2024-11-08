@@ -24,11 +24,13 @@ from greek_accentuation.accentuation import syllable_add_accent
 from greek_accentuation.syllabify import ACUTE, syllabify
 from spacy.tokens import Doc
 
-from .constants import (
+from greek_double_accents.constants import (
     FALSE_TRISYL,
     PRON,
     PRON_GEN,
 )
+
+DEFAULT_PATH = Path(__file__).parent / "etc/book.txt"
 
 PUNCT = re.compile(r"[,.!?;:\n«»\"'·…]")
 VOWEL_ACCENTED = re.compile(r"[έόίύάήώ]")
@@ -251,7 +253,6 @@ def analyze_line(
 ) -> list[tuple[str, None | Entry]]:
     words = line.split()
     cnt = 0
-    states = []
     line_info = []
     cached_doc = None
 
@@ -285,13 +286,7 @@ def analyze_line(
                 if not args.message or args.message in entry.statemsg.msg:
                     entry.show_semantic_info(detail=True)
 
-        # print(entry)
-        # # Debug print semantic info if PENDING
-        # if entry.statemsg.state == State.PENDING:
-        #     entry.show_semantic_info()
-
         line_info.append((word, entry))
-        states.append(entry.statemsg.state)
 
     return line_info
 
@@ -373,6 +368,10 @@ def semantic_analysis(wi: Entry) -> StateMsg:
             # Use morph::VerbForm::Conv for βλέποντας, σφίγγοντας... i.e.
             # if si1["morph"].get("VerbForm", ["X"])[0] == "Conv":
             if w1.endswith(("οντας", "ωντας")):
+                # Ex. ζυγώνοντας τον άρπαξε
+                if pos3 == "VERB":
+                    return StateMsg(State.INCORRECT, "1VERBP3VERB")
+
                 return StateMsg(State.PENDING, "1VERBP")
 
             # (2) To be an imperative verb (which implies, only 2nd person)
@@ -454,8 +453,25 @@ def parse_args() -> Namespace:
         help="Select states using C (CORRECT), I (INCORRECT), P (PENDING), A (AMBIGUOUS)",
     )
     parser.add_argument("-m", "--message", type=str, default="", help="State message")
+    parser.add_argument(
+        "-i",
+        "--input_path",
+        type=Path,
+        default=DEFAULT_PATH,
+        help="Path to the input file",
+    )
+    parser.add_argument(
+        "-o",
+        "--output_path",
+        type=Path,
+        default=None,
+        help="Path to the output file",
+    )
 
     args = parser.parse_args()
+
+    if not args.output_path:
+        args.output_path = f"{args.input_path.name}_fix.txt"
 
     state_map = {
         "C": State.CORRECT,
@@ -471,7 +487,7 @@ def parse_args() -> Namespace:
 def main(replace: bool = True) -> None:
     args = parse_args()
 
-    filepath = Path(__file__).parent / "etc/book.txt"
+    filepath = args.input_path
     with filepath.open("r", encoding="utf-8") as file:
         text = file.read().strip()
 
@@ -480,7 +496,7 @@ def main(replace: bool = True) -> None:
     print(f"Ellapsed {time() - start:.3f}sec")
 
     if replace:
-        opath = filepath.with_stem("book_fix")
+        opath = filepath.with_stem(f"{filepath.stem}_fix")
         with opath.open("w", encoding="utf-8") as file:
             file.write(new_text)
         print(f"The text has been updated in '{opath}'.")
