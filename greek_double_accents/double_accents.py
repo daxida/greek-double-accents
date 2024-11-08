@@ -9,6 +9,7 @@ Does spacy syllabify?
 
 import argparse
 import re
+from argparse import Namespace
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -176,7 +177,7 @@ def add_accent(word: str) -> str:
     return "".join(nsyls)
 
 
-def analyze_text(text: str, replace: bool, print_states: list[State]) -> str:
+def analyze_text(text: str, replace: bool, args: Namespace) -> str:
     paragraphs = text.splitlines()
     n_entries_total = 0
     record = {
@@ -197,7 +198,7 @@ def analyze_text(text: str, replace: bool, print_states: list[State]) -> str:
             new_line = []
             if line := line.strip():
                 # print(f"[{parno}:{lineno}] Line:", line, "\n", paragraph)
-                line_info = analyze_line(line, parno, n_entries_total, print_states)
+                line_info = analyze_line(line, parno, n_entries_total, args)
                 for word, info in line_info:
                     if info is None:
                         new_line.append(word)
@@ -239,7 +240,7 @@ def analyze_line(
     line: str,
     lineno: int,
     n_entries_total: int,
-    print_states: list[State],
+    args: Namespace,
 ) -> list[tuple[str, None | Entry]]:
     words = line.split()
     cnt = 0
@@ -271,9 +272,12 @@ def analyze_line(
             continue
 
         # Print information
-        if entry.statemsg.state in print_states:
+        if entry.statemsg.state in args.select:
+            # Custom discard
             if entry.statemsg.msg != "2PUNCT":
-                entry.show_semantic_info(detail=True)
+                if not args.message or args.message in entry.statemsg.msg:
+                    entry.show_semantic_info(detail=True)
+
         # print(entry)
         # # Debug print semantic info if PENDING
         # if entry.statemsg.state == State.PENDING:
@@ -404,7 +408,7 @@ def semantic_analysis(wi: Entry) -> StateMsg:
     return DEFAULT_STATEMSG
 
 
-def parse_args() -> list[State]:
+def parse_args() -> Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-s",
@@ -413,6 +417,7 @@ def parse_args() -> list[State]:
         default="I",
         help="Select states using C (CORRECT), I (INCORRECT), P (PENDING), A (AMBIGUOUS)",
     )
+    parser.add_argument("-m", "--message", type=str, default="", help="State message")
 
     args = parser.parse_args()
 
@@ -422,18 +427,18 @@ def parse_args() -> list[State]:
         "P": State.PENDING,
         "A": State.AMBIGUOUS,
     }
+    args.select = [state_map[char] for char in args.select if char in state_map]
 
-    selected_states = [state_map[char] for char in args.select if char in state_map]
-    return selected_states
+    return args
 
 
 def main(replace: bool = True) -> None:
-    print_states = parse_args()
+    args = parse_args()
 
     filepath = Path(__file__).parent / "etc/book.txt"
     with filepath.open("r", encoding="utf-8") as file:
         text = file.read().strip()
-        new_text = analyze_text(text, replace, print_states)
+        new_text = analyze_text(text, replace, args)
 
     if replace:
         opath = filepath.with_stem("book_fix")
