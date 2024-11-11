@@ -158,7 +158,7 @@ class Entry:
     def show_semantic_info(self, detail: bool = False) -> None:
         wi = self
         if not wi.semantic_info:
-            print("No semantic info")
+            print(f"No semantic info for {self.word}")
             return
 
         cyan = "\033[36m"
@@ -185,7 +185,7 @@ class Entry:
         }
 
         color = state_colors.get(self.statemsg.state, "\033[0m")
-        state_let = str(self.statemsg.state)[0]
+        state_let = str(self.statemsg.state)[6]
         return f"{color}[{state_let} {self.statemsg.msg:<12}]{hend} {hctx}"
 
     def __str__(self) -> str:
@@ -380,6 +380,8 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
     # same_case13 = si1["case"] == si3["case"]
     same_case23 = si2["case"] == si3["case"]
 
+    _default_statemsg = StateMsg(State.PENDING, f"1{pos1} 2{pos2} 3{pos3}")
+
     match pos1:
         case "VERB":
             # print(w1, si1["pos"], " > ", si1["morph"])
@@ -432,8 +434,8 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
             if person == "1" and number == "Plur":
                 return StateMsg(State.CORRECT, "1VERB1PL")
 
-            # άφησέ τον ήσυχο
-            # αφήνοντάς τον ήσυχο
+            # - άφησέ τον ήσυχο
+            # / αφήνοντάς τον ήσυχο
             if pos3 == "ADJ":
                 return StateMsg(State.AMBIGUOUS, "1VERB 3ADJ")
 
@@ -448,18 +450,18 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
                     if same_case23:
                         return StateMsg(State.CORRECT, "13NOUN 23SC")
                 case "VERB":
-                    # CEx: Το άνθρωπο της έδωσε / Το άνθρωπο τής έδωσε.
+                    # - Το άνθρωπο της έδωσε
+                    # / Το άνθρωπο τής έδωσε.
                     return StateMsg(State.AMBIGUOUS, "1NOUN 3VERB")
                 case "ADP":
-                    # στα, στο, στην κτλ.
-                    # Ex: τον Βασίλειο σας στην Τριαδίτσα.
+                    # ADP: στα, στο, στην κτλ.
+                    # - τον Βασίλειο σας στην Τριαδίτσα.
                     return StateMsg(State.INCORRECT, "1NOUN 3ADP")
                 case "CCONJ":
-                    # και, κι
-                    # Ex: τα γόνατα της και σωριάστηκε στο...
+                    # CCONJ: και, κι
+                    # - τα γόνατα της και σωριάστηκε στο...
                     return StateMsg(State.INCORRECT, "1NOUN 3CCONJ")
 
-            return StateMsg(State.PENDING, "1NOUN")
         case "ADJ":
             # The pronoun must be genitive
             if w2 not in PRON_GEN:
@@ -474,7 +476,6 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
                 case "VERB":
                     return StateMsg(State.AMBIGUOUS, "1ADJ 3VERB")
 
-            return StateMsg(State.PENDING, "1ADJ")
         case "PROPN":
             # High chance of being correct
             if pos3 == "VERB":
@@ -485,7 +486,7 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
         case "ADV":
             return StateMsg(State.CORRECT, "1ADV")
 
-    return DEFAULT_STATEMSG
+    return _default_statemsg
 
 
 def parse_args() -> Namespace:
