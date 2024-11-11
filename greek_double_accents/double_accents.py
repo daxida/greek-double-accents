@@ -431,15 +431,22 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
             if person == "3" and number == "Plur":
                 return StateMsg(State.CORRECT, "1VERB3PL")
             # (2.2.) Same reasoning for 1PL
-            if person == "1" and number == "Plur":
-                return StateMsg(State.CORRECT, "1VERB1PL")
+            if person == "1":
+                if number == "Plur":
+                    return StateMsg(State.CORRECT, "1VERB1PL")
+                elif number == "Sing":
+                    return StateMsg(State.CORRECT, "1VERB1S")
 
             # - άφησέ τον ήσυχο
             # / αφήνοντάς τον ήσυχο
             if pos3 == "ADJ":
                 return StateMsg(State.AMBIGUOUS, "1VERB 3ADJ")
 
-            return StateMsg(State.PENDING, "1VERB")
+            # - Κωνσταντίνος έσφιξε το χέρι του φίλου
+            # - Μιχαήλ έσκυψε το κεφάλι στα χέρια
+            if pos2 == "DET" and pos3 == "NOUN":
+                return StateMsg(State.CORRECT, "1VERB 2DET 3NOUN")
+
         case "NOUN":
             # The pronoun must be genitive
             if w2 not in PRON_GEN:
@@ -461,6 +468,10 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
                     # CCONJ: και, κι
                     # - τα γόνατα της και σωριάστηκε στο...
                     return StateMsg(State.INCORRECT, "1NOUN 3CCONJ")
+                case "DET":
+                    # - Το μήνυμα σου το έγραψες ελληνικά.
+                    # - Στο πρόσωπο του η φρίκη ήταν [...]
+                    return StateMsg(State.INCORRECT, "1NOUN 3DET")
 
         case "ADJ":
             # The pronoun must be genitive
