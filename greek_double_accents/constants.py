@@ -2,7 +2,14 @@ from pathlib import Path
 
 # These words are parsed as trisyllables by syllabify
 # but they actually have only two syllables.
-FALSE_TRISYL = {"δίκιο", "δίκια", "λόγια"}
+FALSE_TRISYL = {
+    "δίκιο",
+    "δίκια",
+    # "λόγια", # Can also be trisyl
+    "κουράγιο",
+    "καινούριο",
+    "καινούργιο",
+}
 
 neuters_path = Path(__file__).parent / "etc/neuters.txt"
 with neuters_path.open("r", encoding="utf-8") as f:
