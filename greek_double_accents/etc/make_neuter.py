@@ -44,6 +44,10 @@ def filter_neuter(words: list[str]) -> list[str]:
             continue
         neuter_words.append(plural)
 
+    # https://el.wiktionary.org/wiki/Παράρτημα:Ουσιαστικά_(νέα_ελληνικά)/ουδέτερα#-υ_ουδέτερα
+    neuter_words.extend(["βράδια", "δάκρυα", "δίκτυα", "δίχτυα", "στάχυα"])
+    neuter_words.sort()
+
     return neuter_words
 
 
