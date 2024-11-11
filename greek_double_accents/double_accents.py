@@ -306,7 +306,7 @@ def analyze_line(
         if entry.statemsg.state in args.select:
             # Custom discard
             if entry.statemsg.msg != "2PUNCT":
-                if not args.message or args.message in entry.statemsg.msg:
+                if not args.message or re.match(args.message, entry.statemsg.msg):
                     entry.show_semantic_info(detail=True)
 
         line_info.append((word, entry))
