@@ -512,14 +512,14 @@ def parse_args() -> Namespace:
     parser.add_argument("-m", "--message", type=str, default="", help="State message")
     parser.add_argument(
         "-i",
-        "--input_path",
+        "--input-path",
         type=Path,
         default=DEFAULT_PATH,
         help="Path to the input file",
     )
     parser.add_argument(
         "-o",
-        "--output_path",
+        "--output-path",
         type=Path,
         default=None,
         help="Path to the output file",

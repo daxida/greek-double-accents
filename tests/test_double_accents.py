@@ -2,8 +2,8 @@ from greek_double_accents.double_accents import (
     Entry,
     State,
     StateMsg,
-    simple_entry_checks,
     semantic_analysis,
+    simple_entry_checks,
 )
 
 
@@ -34,7 +34,7 @@ def make_test(
     expected = StateMsg(state, msg)
 
     # (Optional) Test that the spaCy analysis is sound.
-    if not spacy_checks is None:
+    if spacy_checks is not None:
         sis = entry.semantic_info
         assert sis is not None
 

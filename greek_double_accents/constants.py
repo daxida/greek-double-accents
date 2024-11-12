@@ -2,10 +2,10 @@ from pathlib import Path
 
 # These words are parsed as trisyllables by syllabify
 # but they actually have only two syllables.
-FALSE_TRISYL = {
+_FALSE_TRISYL = {
     "δίκιο",
     "δίκια",
-    # "λόγια", # Can also be trisyl
+    "λόγια",  # Always bisyl as NOUN (can be trisyl as adj.)
     "κουράγιο",
     "καινούριο",
     "καινούργιο",
@@ -13,8 +13,9 @@ FALSE_TRISYL = {
 
 neuters_path = Path(__file__).parent / "etc/neuters.txt"
 with neuters_path.open("r", encoding="utf-8") as f:
-    FALSE_TRISYL |= set(f.read().splitlines())
+    _FALSE_TRISYL |= set(f.read().splitlines())
 
+FALSE_TRISYL = frozenset(_FALSE_TRISYL)
 
 # Grammar
 # http://ebooks.edu.gr/ebooks/v/html/8547/2009/Grammatiki_E-ST-Dimotikou_html-apli/index_C8a.html
