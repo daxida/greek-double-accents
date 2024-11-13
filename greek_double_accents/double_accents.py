@@ -211,7 +211,7 @@ TaggedLine = list[TaggedWord]
 TaggedText = list[list[TaggedLine]]
 
 
-def tag_text(text: str, args: Namespace) -> TaggedText:
+def tag_text(text: str) -> TaggedText:
     paragraphs = text.splitlines()
 
     tagged_paragraphs = []
@@ -220,7 +220,7 @@ def tag_text(text: str, args: Namespace) -> TaggedText:
         par_lines = LINE_RE.findall(paragraph)
         for line in par_lines:
             if line := line.strip():
-                line_info = analyze_line(line, parno, args)
+                line_info = analyze_line(line, parno)
                 tagged_paragraph.append(line_info)
         tagged_paragraphs.append(tagged_paragraph)
 
@@ -255,19 +255,33 @@ def deep_flatten(nested):  # noqa
             yield item
 
 
-def analyze_text(text: str, replace: bool, args: Namespace) -> str:
-    tagged_paragraphs = tag_text(text, args)
+def analyze_text(
+    text: str,
+    replace: bool,
+    *,
+    print_state: str = "",
+    print_statemsg: str = "",
+    reference_path: Path | None = None,
+    diagnostics: bool = False,
+) -> str:
+    tagged_paragraphs = tag_text(text)
+    print_tagged_text(
+        tagged_paragraphs,
+        print_state=print_state,
+        print_statemsg=print_statemsg,
+    )
     new_text = tagged_text_to_raw(tagged_paragraphs, replace=replace)
 
-    if args.reference_path:
-        compare_with_reference(tagged_paragraphs, args.reference_path)
+    if reference_path:
+        compare_with_reference(tagged_paragraphs, reference_path)
 
-    diagnostics(tagged_paragraphs)
+    if diagnostics:
+        _diagnostics(tagged_paragraphs)
 
     return new_text
 
 
-def diagnostics(tagged_paragraphs: TaggedText) -> None:
+def _diagnostics(tagged_paragraphs: TaggedText) -> None:
     record_statemsgs = Counter()
     record_states = Counter()
     record_msgs = Counter()
@@ -361,12 +375,7 @@ def compare_with_reference(tagged_paragraphs: TaggedText, reference_path: Path) 
     # print(sorted(set(false_negatives)))
 
 
-def analyze_line(
-    line: str,
-    lineno: int,
-    args: Namespace,
-    cached_doc: Doc | None = None,
-) -> TaggedLine:
+def analyze_line(line: str, lineno: int, cached_doc: Doc | None = None) -> TaggedLine:
     words = line.split()
     line_info = []
 
@@ -397,15 +406,36 @@ def analyze_line(
 
         line_info.append((word, info))
 
-    for word, entry in line_info:
-        # Print information
-        if entry and entry.statemsg.state in args.select:
+    return line_info
+
+
+def print_tagged_text(
+    paragraphs: TaggedText,
+    *,
+    print_state: str = "",
+    print_statemsg: str = "",
+) -> None:
+    for paragraph in paragraphs:
+        for line_info in paragraph:
+            print_line_info(
+                line_info,
+                print_state=print_state,
+                print_statemsg=print_statemsg,
+            )
+
+
+def print_line_info(
+    line_info: TaggedLine,
+    *,
+    print_state: str = "",
+    print_statemsg: str = "",
+) -> None:
+    for _, entry in line_info:
+        if entry and entry.statemsg.state in print_state:
             # Custom discard
             if entry.statemsg.msg != "2PUNCT":
-                if not args.message or re.match(args.message, entry.statemsg.msg):
+                if not print_statemsg or re.match(print_statemsg, entry.statemsg.msg):
                     entry.show_semantic_info(detail=True)
-
-    return line_info
 
 
 def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
@@ -461,6 +491,9 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
 
     if not entry.semantic_info:
         raise ValueError(f"No semantic info for {entry.word}.")
+
+    if not entry.words:
+        raise ValueError(f"No words for {entry.word}.")
 
     w1, w2, w3 = entry.words[:3]
     si1, si2, si3 = entry.semantic_info
@@ -749,11 +782,18 @@ def parse_args() -> Namespace:
         default=None,
         help="Path to the output file",
     )
+    parser.add_argument(
+        "-d",
+        "--diagnostics",
+        action="store_true",
+        help="Enable diagnostics output",
+    )
 
     args = parser.parse_args()
 
     if not args.output_path:
-        args.output_path = f"{args.input_path.name}_fix.txt"
+        ipath = args.input_path
+        args.output_path = ipath.with_stem(f"{ipath.stem}_fix")
 
     state_map = {
         "C": State.CORRECT,
@@ -774,11 +814,18 @@ def main(replace: bool = True) -> None:
         text = file.read().strip()
 
     start = time()
-    new_text = analyze_text(text, replace, args)
+    new_text = analyze_text(
+        text,
+        replace,
+        print_state=args.select,
+        print_statemsg=args.message,
+        reference_path=args.reference_path,
+        diagnostics=args.diagnostics,
+    )
     print(f"Ellapsed {time() - start:.3f}sec")
 
     if replace:
-        opath = filepath.with_stem(f"{filepath.stem}_fix")
+        opath = args.output_path
         with opath.open("w", encoding="utf-8") as file:
             file.write(new_text)
         print(f"The text has been updated in '{opath}'.")
