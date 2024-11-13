@@ -7,56 +7,51 @@ from pathlib import Path
 # Note that many diminutives other than those extracted
 # from el_GR are not included, i.e. αδερφούλια, λεφτουδάκια
 
+
+def _add_endings(lemmas: set[str], endings: str) -> set[str]:
+    return {f"{lemma}{ending}" for lemma in lemmas for ending in endings.split()}
+
+
 # Nouns ending in ια (singular in ια, genitive in ιας).
+# Ex. αρρώστια
+#
 # Note that if the ια form has συνίζηση so does the equivalent
 # εια form, if it exists (ζήλια/εια, περιφάνια/εια)
-IA_NOUN = {
-    "αλήθεια",
-    "αρρώστια",
-    "φτώχεια",
-    "φτώχια",
-    "συμπόνια",
-    "περηφάνεια",
-    "περηφάνια",
-    "ορφάνια",
-    "ζήλεια",
-    "ζήλια",
+IA_NOUN_LEMMA = {
+    "αλήθει",
+    "αρρώστι",
+    "φτώχει",
+    "φτώχι",
+    "συμπόνι",
+    "περηφάνει",
+    "περηφάνι",
+    "ορφάνι",
+    "ζήλει",
+    "ζήλι",
 }
-IA_NOUN |= {f"{noun}ς" for noun in IA_NOUN}
-IA_NOUN |= {f"{noun[:-1]}ες" for noun in IA_NOUN}
+IA_NOUN = _add_endings(IA_NOUN_LEMMA, "α ας ες")
 
 # Adjectives ending in ιος / ια / ιο.
-# Use the lemma (i.e. αλογίσι for αλογίσιος)
+# Ex. αλογίσιος
 IA_ADJ_LEMMA = {
     "αλογίσι",
 }
-IA_ADJ = set()
-_endings = "ος ου ο ε α ας ων ους ες".split()
-for lemma in IA_ADJ_LEMMA:
-    for ending in _endings:
-        IA_ADJ.add(f"{lemma}{ending}")
+IA_ADJ = _add_endings(IA_ADJ_LEMMA, "ος ου ο ε α ας ων ους ες")
 
 # Nouns ending in ιο (singular in ιο, plural in ια).
+# Ex. μπάνιο
 IO_IA_NOUN_LEMMA = {
     "δίκι",
     "μπάνι",
     "ίδι",  # Ambiguous: can also be trisyl (but much more common as bisyl)
 }
-IO_IA_NOUN = set()
-_endings = "ο ου α ων".split()
-for lemma in IO_IA_NOUN_LEMMA:
-    for ending in _endings:
-        IO_IA_NOUN.add(f"{lemma}{ending}")
+IO_IA_NOUN = _add_endings(IO_IA_NOUN_LEMMA, "ο ου α ων")
 
 # Nouns ending in ιο (singular in ιο, plural in ιος).
 IO_IOS_NOUN_LEMMA = {
     "ίσκι",
 }
-IO_IOS_NOUN = set()
-_endings = "ος ου ο ε οι ων ους".split()
-for lemma in IO_IOS_NOUN_LEMMA:
-    for ending in _endings:
-        IO_IOS_NOUN.add(f"{lemma}{ending}")
+IO_IOS_NOUN = _add_endings(IO_IOS_NOUN_LEMMA, "ος ου ο ε οι ων ους")
 
 # Nouns ending in ι (singular in ι / plural in ια)
 I_IO_NOUN = {
