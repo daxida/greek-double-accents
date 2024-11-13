@@ -104,7 +104,9 @@ class Entry:
 
     def add_semantic_info(self, doc: Doc) -> Literal[0, 1]:
         """Returns 0 in case of success."""
-        if self.word_idx >= len(self.line) - 2:
+        if self.word_idx + 3 > len(self.line):
+            # Note that this could happen in titles, where there can
+            # be no final punctuation.
             if WARNINGS:
                 print(
                     "Warning "
@@ -116,9 +118,6 @@ class Entry:
 
         words = [split_punctuation(w)[0] for w in self.line[self.word_idx : self.word_idx + 3]]
         self.words = words
-        assert len(words) == 3
-
-        # TODO: Keep the tokens for the whole sentence to debug
 
         # Reconcile both splitting methods (can FAIL but rare)
         # Uses the fact the we know that word 1 and 2 have no punctuation
@@ -149,25 +148,13 @@ class Entry:
             semantic_info[idx] = {}
             semantic_info[idx]["word"] = word
             semantic_info[idx]["pos"] = token.pos_
-            if word == words[1]:
-                # Why does spacy thinks that σου is an ADV/ADJ/NOUN?
-                if word != "σου":
-                    assert token.pos_ in (
-                        "DET",
-                        "PRON",
-                        "ADP",  # με
-                        "PROPN",  # μου ???
-                        # FIXME: ADP should always be correct 'με φρίκη' etc.
-                    ), f"Unexpected pos {token.pos_} from {token.text}"
             semantic_info[idx]["case"] = token.morph.get("Case", ["X"])[0]
 
             # Debug
             # https://universaldependencies.org/u/feat/index.html
-            # For POS
             # https://universaldependencies.org/u/pos/index.html
             semantic_info[idx]["token"] = token
             semantic_info[idx]["morph"] = token.morph
-            semantic_info[idx]["verbForm"] = token.morph.get("VerbForm", ["X"])
 
         assert len(semantic_info) == 3, f"{semantic_info}\n{words}\n{self.word} || {self.line}"
 
@@ -420,6 +407,10 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
         # > SCONJ
         # - το τηλέφωνο σας όταν βρίσκεστε σε
         return StateMsg(State.INCORRECT, "CONJ")
+
+    if pos2 not in ("DET", "PRON", "ADP"):
+        # It may be wrongly tagged as NOUN | VERB | ADV | NUM
+        return StateMsg(State.AMBIGUOUS, "2POS WRONG")
 
     match pos1:
         case "VERB":
