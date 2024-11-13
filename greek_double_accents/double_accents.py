@@ -39,6 +39,7 @@ WARNINGS = False
 
 PUNCT = re.compile(r"[,.!?;:\n«»\"'·…]")
 VOWEL_ACCENTED = re.compile(r"[έόίύάήώ]")
+LINE_RE = re.compile(r"[^.!?;:…»]+(?:[.!?;:…»\n]+,?)?")
 
 # Import spacy model: greek small.
 model_name = "el_core_news_sm"  # sm / md / lg
@@ -72,7 +73,7 @@ class State(Enum):
     AMBIGUOUS = "ambiguous"
 
 
-@dataclass
+@dataclass(frozen=True)  # For hashing
 class StateMsg:
     state: State
     msg: str
@@ -87,11 +88,10 @@ class Entry:
     word_idx: int
     line: list[str]
     line_number: int = 0
-    entry_id: int = 0
     # Otherwise mutable default error etc.
     statemsg: StateMsg = field(default_factory=lambda: DEFAULT_STATEMSG)
     semantic_info: list[dict[str, Any]] | None = None
-    # words?
+    words: list[str] | None = None
 
     @property
     def line_ctx(self) -> str:
@@ -206,80 +206,168 @@ def add_accent(word: str) -> str:
     return "".join(nsyls)
 
 
-def analyze_text(text: str, replace: bool, args: Namespace) -> str:
+TaggedWord = tuple[str, Entry | None]
+TaggedLine = list[TaggedWord]
+TaggedText = list[list[TaggedLine]]
+
+
+def tag_text(text: str, args: Namespace) -> TaggedText:
     paragraphs = text.splitlines()
-    n_entries_total = 0
+
+    tagged_paragraphs = []
+    for parno, paragraph in enumerate(paragraphs, start=1):
+        tagged_paragraph = []
+        par_lines = LINE_RE.findall(paragraph)
+        for line in par_lines:
+            if line := line.strip():
+                line_info = analyze_line(line, parno, args)
+                tagged_paragraph.append(line_info)
+        tagged_paragraphs.append(tagged_paragraph)
+
+    return tagged_paragraphs
+
+
+def tagged_text_to_raw(tagged_paragraphs: TaggedText, *, replace: bool) -> str:
+    """Convert a TaggedText back to a string."""
+    new_paragraphs = []
+
+    for tagged_paragraph in tagged_paragraphs:
+        new_paragraph = []
+        for line_info in tagged_paragraph:
+            new_line = []
+            for word, info in line_info:
+                nword = word
+                if replace and info and info.statemsg.state == State.INCORRECT:
+                    nword = add_accent(word)
+                new_line.append(nword)
+            new_paragraph.append(" ".join(new_line))
+        new_paragraphs.append(" ".join(new_paragraph))
+
+    return "\n".join(new_paragraphs)
+
+
+def deep_flatten(nested):  # noqa
+    """Flatten an arbitrarily deep nesting of lists."""
+    for item in nested:
+        if isinstance(item, list):
+            yield from deep_flatten(item)
+        else:
+            yield item
+
+
+def analyze_text(text: str, replace: bool, args: Namespace) -> str:
+    tagged_paragraphs = tag_text(text, args)
+    new_text = tagged_text_to_raw(tagged_paragraphs, replace=replace)
+
+    if args.reference_path:
+        compare_with_reference(tagged_paragraphs, args.reference_path)
+
+    diagnostics(tagged_paragraphs)
+
+    return new_text
+
+
+def diagnostics(tagged_paragraphs: TaggedText) -> None:
+    record_statemsgs = Counter()
     record_states = Counter()
     record_msgs = Counter()
+    for _, entry in deep_flatten(tagged_paragraphs):
+        if entry:
+            state = entry.statemsg.state
+            msg: str = entry.statemsg.msg
+            record_statemsgs[entry.statemsg] += 1
+            record_states[state] += 1
+            record_msgs[msg] += 1
 
-    line_re = re.compile(r"[^.!?;:…»]+(?:[.!?;:…»\n]+,?)?")
-    new_text = []
-
-    for parno, paragraph in enumerate(paragraphs, start=1):
-        new_paragraph = []
-        par_lines = line_re.findall(paragraph)
-
-        for _, line in enumerate(par_lines, start=1):
-            new_line = []
-            if line := line.strip():
-                # print(f"[{parno}:{lineno}] Line:", line, "\n", paragraph)
-                line_info = analyze_line(line, parno, n_entries_total, args)
-                for word, info in line_info:
-                    if info is None:
-                        new_line.append(word)
-                    else:
-                        state = info.statemsg.state
-                        msg: str = info.statemsg.msg
-                        n_entries_total += 1
-                        record_states[state] += 1
-                        record_msgs[msg] += 1
-
-                        if replace and state == State.INCORRECT and msg != "2PUNCT":
-                            new_line.append(add_accent(word))
-                        else:
-                            new_line.append(word)
-
-            new_paragraph.append(" ".join(new_line))
-        new_text.append(" ".join(new_paragraph))
-
-        # TODO: remove
-        if n_entries_total >= 7000:
-            break
-
-    print_summary(n_entries_total, record_states, record_msgs)
-
-    return "\n".join(new_text)
-
-
-def print_summary(
-    n_entries_total: int,
-    record_states: Counter,
-    record_msgs: Counter,
-) -> None:
-    print(f"\nFound {n_entries_total} candidates.")
-    total = 0
+    n_total_states = sum(record_states.values())
+    print("\nDiagnostics")
+    print(f"* Found {n_total_states} entries.\n")
     for state, cnt in record_states.items():
-        total += cnt
-        print(f"{str(state)[6:]:<9} {cnt}")
+        print(f"* {str(state)[6:]:<9} {cnt}")
     print()
-    assert total == n_entries_total
 
-    mf_key, mf_count = record_msgs.most_common(1)[0]
-    print(f"The most frequent msg is: '{mf_key}' ({mf_count} times).")
+    if mc := record_msgs.most_common(1):
+        mf_key, mf_count = mc[0]
+        print(f"* The most frequent msg is: '{mf_key}' ({mf_count} times).")
 
-    not_pending = total - record_states[State.PENDING]
-    print(f"Coverage  {not_pending / total:.02f}%")
+    pending_counter = Counter(
+        {k: v for k, v in record_statemsgs.items() if k.state == State.PENDING}
+    )
+    if pmc := pending_counter.most_common(1):
+        pen_mf_key, pen_mf_count = pmc[0]
+        print(f"* The most frequent (pending) msg is: '{pen_mf_key.msg}' ({pen_mf_count} times).")
+
+    not_pending = n_total_states - record_states[State.PENDING]
+    if n_total_states:
+        print(f"* Coverage  {not_pending / n_total_states:.02f}%")
+    print()
+
+
+def compare_with_reference(tagged_paragraphs: TaggedText, reference_path: Path) -> None:
+    """Debugging function.
+
+    Compares predicted results against actual ones."""
+    ref_text = reference_path.open("r", encoding="utf-8").read().strip()
+    ref_paragraphs = ref_text.splitlines()
+    assert len(ref_paragraphs) == len(
+        tagged_paragraphs
+    ), f"{len(ref_paragraphs)} != {len(tagged_paragraphs)}"
+    ref_lines = [
+        [sentence.split() for sentence in LINE_RE.findall(paragraph)]
+        for paragraph in ref_paragraphs
+    ]
+
+    false_positives = []
+    false_negatives = []
+    true_positives = 0
+    true_negatives = 0
+    print_false_pn = True
+
+    word_it = deep_flatten(tagged_paragraphs)
+    ref_it = deep_flatten(ref_lines)
+
+    for (word, entry), refword in zip(word_it, ref_it):
+        if not entry:
+            continue
+
+        state = entry.statemsg.state
+        if word == refword and state == State.INCORRECT:
+            # These are scary
+            if print_false_pn:
+                print(f"\033[41m[FPos]\033[0m: {entry}")
+            false_positives.append(word)
+        if word != refword and state == State.CORRECT:
+            # These are whatever
+            # print(f"False negative {word} // {entry.line_ctx}")
+            if print_false_pn:
+                print(f"\033[43m[FNeg]\033[0m: {entry}")
+            false_negatives.append(word)
+        if word == refword and state == State.CORRECT:
+            true_positives += 1
+        if word != refword and state == State.INCORRECT:
+            true_negatives += 1
+
+    # False positives/negatives
+    print("                   Predicted Positive    Predicted Negative")
+    print("Actual Positive    " f"TP: {true_positives}             " f"FN: {len(false_negatives)}")
+    print(
+        "Actual Negative    " f"FP: {len(false_positives)}               " f"TN: {true_negatives}"
+    )
+    # relevant_false_positives = [f for f in false_positives if f[-1] in "αο"]
+    # relevant_false_positives = sorted(set(relevant_false_positives))
+    # print(f"Relevant False positives ({len(relevant_false_positives)}):")
+    # print(relevant_false_positives)
+    # print(f"Relevant False negatives ({len(false_negatives)}):")
+    # print(sorted(set(false_negatives)))
 
 
 def analyze_line(
     line: str,
     lineno: int,
-    n_entries_total: int,
     args: Namespace,
     cached_doc: Doc | None = None,
-) -> list[tuple[str, None | Entry]]:
+) -> TaggedLine:
     words = line.split()
-    cnt = 0
     line_info = []
 
     # Tested to correctly work: ignore them (=do not store the entry)
@@ -289,8 +377,7 @@ def analyze_line(
         info: Entry | None = None
 
         if not simple_word_checks(word, idx, len(words)):
-            entry = Entry(word, idx, words, lineno, n_entries_total + cnt)
-            cnt += 1
+            entry = Entry(word, idx, words, lineno)
 
             statemsg = simple_entry_checks(entry)
 
@@ -648,6 +735,12 @@ def parse_args() -> Namespace:
         type=Path,
         default=DEFAULT_PATH,
         help="Path to the input file",
+    )
+    parser.add_argument(
+        "-r",
+        "--reference-path",
+        type=Path,
+        help="(DEBUG) Path to the reference file",
     )
     parser.add_argument(
         "-o",
