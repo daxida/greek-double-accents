@@ -388,7 +388,7 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
     if not entry.semantic_info:
         raise ValueError(f"No semantic info for {entry.word}.")
 
-    w1, w2, _ = entry.words[:3]
+    w1, w2, w3 = entry.words[:3]
     si1, si2, si3 = entry.semantic_info
     pos1 = si1["pos"]
     pos2 = si2["pos"]
@@ -397,10 +397,6 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
     if "X" in (pos1 + pos3):
         # Ambiguous: incomplete information
         return StateMsg(State.AMBIGUOUS, "NO INFO")
-
-    # same_case12 = si1["case"] == si2["case"]
-    # same_case13 = si1["case"] == si3["case"]
-    same_case23 = si2["case"] == si3["case"]
 
     _default_statemsg = StateMsg(State.PENDING, f"1{pos1} 2{pos2} 3{pos3}")
 
@@ -427,7 +423,27 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
 
     match pos1:
         case "VERB":
-            # print(w1, si1["pos"], " > ", si1["morph"])
+            # All gerunds + imperative end in α, ε, υ (from ου) or ς
+            # This quick check detects a lot of correct tenses.
+            if w1[-1] not in "αευς":
+                return StateMsg(State.CORRECT, "1VERB ENDING")
+
+            if pos2 == "ADP":
+                # - να αμείβεται σε αρκετές περιπτώσεις χαμηλότερα [...]
+                # - που βρίσκεται σε φάση υποχώρησης και [...]
+                # - Γρηγόρης, γυρεύοντας με τον ήσυχο τόνο [...]
+                return StateMsg(State.CORRECT, "1VERB 2ADP")
+
+            # - άφησέ τον ήσυχο
+            # / αφήνοντάς τον ήσυχο
+            if pos3 == "ADJ":
+                return StateMsg(State.AMBIGUOUS, "1VERB 3ADJ")
+
+            # - άφησέ τον γρήγορα
+            # / αφήνοντάς τον πολύ ήσυχο
+            if pos3 == "ADV":
+                return StateMsg(State.AMBIGUOUS, "1VERB 3ADV")
+
             # For a verb to have double accents it NEEDS (yet it does not
             # suffice), to either:
             # (1) To be a gerund (μετοχή)
@@ -440,24 +456,24 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
                 if pos2 == "PRON":
                     return StateMsg(State.INCORRECT, "1VERBP 2PRON")
 
-                # Γρηγόρης, γυρεύοντας με τον ήσυχο τόνο [...]
-                # χέρι, σκοντάφτοντας σε κάθε βήμα...
-                if pos2 == "ADP":
-                    return StateMsg(State.CORRECT, "1VERBP 2ADP")
-
-                # Ex. ζυγώνοντας τον άρπαξε
-                if pos3 == "VERB":
-                    return StateMsg(State.INCORRECT, "1VERBP 3VERB")
-
-                # There are counter examples but there are very rare
-                # and idiomatic (set phrases).
-                # CEx. βλέποντάς τον σπίτι έφυγε...
-                if pos3 == "NOUN" and w2 not in PRON_GEN:
-                    return StateMsg(State.CORRECT, f"1VERBP 2{w2}~GEN 3NOUN")
-                if pos3 == "PROPN" and w2 not in PRON_GEN:
-                    return StateMsg(State.CORRECT, f"1VERBP 2{w2}~GEN 3PROPN")
-
-                return StateMsg(State.PENDING, "1VERBP")
+                match pos3:
+                    case "ADP":
+                        # - Παΐσιος κοιτάζοντας τον με πικραμένη απορία.  VERB DET ADP
+                        # - άλογα πηγαίνοντας τον στο σταθμό της [...] VERB DET ADP
+                        return StateMsg(State.INCORRECT, "1VERBP 3ADP")
+                    case "DET":
+                        # - Βλέποντας τον η Φένια έβαλε [...] VERB DET DET
+                        # - και δείχνοντας του τη «θεραπευμένη»  VERB DET DET
+                        return StateMsg(State.INCORRECT, "1VERBP 3DET")
+                    case "VERB":
+                        # - ζυγώνοντας τον άρπαξε
+                        # / κάπως κομπιάζοντάς τη ρώτησε όσο μπορούσε πιο ευγενικά,
+                        return StateMsg(State.AMBIGUOUS, "1VERBP 3VERB")
+                    case "NOUN" | "PROPN":
+                        # There are counter examples but rare and idiomatic (set phrases).
+                        # / βλέποντάς τον σπίτι έφυγε...
+                        if w2 not in PRON_GEN:
+                            return StateMsg(State.CORRECT, f"1VERBP 2{w2}~GEN 3NOUN-PROPN")
 
             # (2) To be an imperative verb (which implies, only 2nd person)
             #     Unfortunately spaCy is defective when it comes to detect person
@@ -473,22 +489,39 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
             number = si1["morph"].get("Number", ["X"])[0]
             if person == "3" and number == "Plur":
                 return StateMsg(State.CORRECT, "1VERB3PL")
-            # (2.2.) Same reasoning for 1PL
+            # (2.2.) Same reasoning for 1 (Plur and Sing)
             if person == "1":
-                if number == "Plur":
-                    return StateMsg(State.CORRECT, "1VERB1PL")
-                elif number == "Sing":
-                    return StateMsg(State.CORRECT, "1VERB1S")
+                return StateMsg(State.CORRECT, "1VERB1")
 
-            # - άφησέ τον ήσυχο
-            # / αφήνοντάς τον ήσυχο
-            if pos3 == "ADJ":
-                return StateMsg(State.AMBIGUOUS, "1VERB 3ADJ")
-
-            # - Κωνσταντίνος έσφιξε το χέρι του φίλου
-            # - Μιχαήλ έσκυψε το κεφάλι στα χέρια
-            if pos2 == "DET" and pos3 == "NOUN":
-                return StateMsg(State.CORRECT, "1VERB 2DET 3NOUN")
+            match pos3:
+                case "ADP":
+                    # - και συγκρίνετε την με την προηγούμενη.
+                    return StateMsg(State.INCORRECT, "1VERB 3ADV")
+                case "DET":
+                    # - Φίλησε μου τη Νικόλ και [...]
+                    return StateMsg(State.CORRECT, "1VERB 3DET")
+                case "NOUN":
+                    # - Κωνσταντίνος έσφιξε το χέρι του φίλου
+                    # - Μιχαήλ έσκυψε το κεφάλι στα χέρια
+                    # - ζωής, παρακάμπτοντας τους μύθους.
+                    # / του, μεταφέροντας του αξίες, πρότυπα και [...]
+                    return StateMsg(State.AMBIGUOUS, "1VERB 3NOUN")
+                case "NUM":
+                    # - ποδοσφαίρου έγινε το 1872 μεταξύ Αγγλίας [...]
+                    # / Επανάλαβε το 2-3 φορές την [...]
+                    # / άσκηση εκτέλεσε την 2 φορές από [...]
+                    return StateMsg(State.AMBIGUOUS, "1VERB 3NUM")
+                case "PRON":
+                    # / Ρώτησε τους τι τους αρέσει [...]
+                    return StateMsg(State.INCORRECT, "1VERB 3PRON")
+                case "PROPN":
+                    # - πεδίο βαρύτητας της Γης είναι ομογενές.
+                    # - της προστάτευε τον Ιωνά από τον
+                    # - «Αυτός βλασφήμησε το Θεό και το [...]
+                    return StateMsg(State.CORRECT, "1VERB 3PROPN")
+                case "VERB":
+                    # Is this even possible?
+                    return StateMsg(State.CORRECT, "1VERB 3VERB")
 
         case "NOUN":
             # The pronoun must be genitive
@@ -496,25 +529,47 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
                 return StateMsg(State.CORRECT, f"1NOUN 2{w2}~GEN")
 
             match pos3:
-                case "NOUN":
-                    if same_case23:
-                        return StateMsg(State.CORRECT, "13NOUN 23SC")
-                case "VERB":
-                    # - Το άνθρωπο της έδωσε
-                    # / Το άνθρωπο τής έδωσε.
-                    return StateMsg(State.AMBIGUOUS, "1NOUN 3VERB")
+                case "ADJ":
+                    # - Η ανάλυση της καταναλωτικής συμπεριφοράς, του [...]
+                    # - σαν Πρόεδρος της Επίτιμης Επιτροπής θα [...]
+                    return StateMsg(State.CORRECT, "1NOUN 3ADJ")
                 case "ADP":
                     # ADP: στα, στο, στην κτλ.
                     # - τον Βασίλειο σας στην Τριαδίτσα.
                     return StateMsg(State.INCORRECT, "1NOUN 3ADP")
-                case "CCONJ":
-                    # CCONJ: και, κι
-                    # - τα γόνατα της και σωριάστηκε στο...
-                    return StateMsg(State.INCORRECT, "1NOUN 3CCONJ")
+                case "ADV":
+                    # / άφησε το αυτοκίνητό του κοντά
+                    return StateMsg(State.INCORRECT, "1NOUN 3ADV")
                 case "DET":
                     # - Το μήνυμα σου το έγραψες ελληνικά.
                     # - Στο πρόσωπο του η φρίκη ήταν [...]
-                    return StateMsg(State.INCORRECT, "1NOUN 3DET")
+                    # / Η κύρια μου τα εξήγησε όλα, [...]
+                    return StateMsg(State.AMBIGUOUS, "1NOUN 3DET")
+                case "NOUN" | "PROPN":
+                    # if same_case23:
+                    #     return StateMsg(State.CORRECT, "1NOUN 23SC 3NOUN-PROPN")
+                    return StateMsg(State.CORRECT, "1NOUN 3NOUN-PROPN")
+                case "NUM":
+                    # - Τον Οκτώβριο του 2007 παρότι ουδέποτε
+                    # - στην προέλευση της πρώτης ύλης τους, [...]
+                    return StateMsg(State.CORRECT, "1NOUN 3NUM")
+                case "PART":
+                    if w3 == "μη":
+                        # - στην περίπτωση της μη αντιστρεπτής μεταβολής.
+                        return StateMsg(State.CORRECT, "1NOUN 3MI")
+                    else:
+                        # / Το κείμενο σας δεν μπορεί να [...]
+                        # / η κίνηση τους δεν είναι ευθύγραμμη [...]
+                        return StateMsg(State.INCORRECT, "1NOUN 3PART")
+                case "PRON":
+                    # - την εξέλιξη της οποίας παρακολουθήσαμε
+                    # - χορευτικό ρεπερτόριο του κάθε νησιού παρουσιάζει
+                    # / τη συγκίνηση της που βρίσκεται στην
+                    return StateMsg(State.AMBIGUOUS, "1NOUN 3PRON")
+                case "VERB":
+                    # - Το άνθρωπο της έδωσε
+                    # / Το άνθρωπο τής έδωσε.
+                    return StateMsg(State.AMBIGUOUS, "1NOUN 3VERB")
 
         case "ADJ":
             # The pronoun must be genitive
@@ -522,23 +577,66 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
                 return StateMsg(State.CORRECT, f"1ADJ 2{w2}~GEN")
 
             match pos3:
-                # Ambiguous for nominalized adjectives even in the same case
-                # CEx. του όμορφου του Νίκου / του όμορφού του Νίκου
+                case "ADJ":
+                    # - πιο αντάξια του ανθρώπινου γένους.
+                    return StateMsg(State.CORRECT, "1ADJ 3ADJ")
+                case "ADP":
+                    # / τις δεξιότητες τους για τη συλλογή [...]
+                    return StateMsg(State.INCORRECT, "1ADJ 3ADP")
+                case "ADV":
+                    # / ως αντιπρόσωποι του πάνω στη γη.
+                    # / οι απόγονοι σου όπως οι κόκκοι [...]
+                    return StateMsg(State.INCORRECT, "1ADJ 3ADV")
+                case "DET":
+                    # Note that ίδιο, the main case, is now treated as
+                    # false trisyllable.
+                    # / τον ίδιο τους τον εαυτό.
+                    # / στο ημερολόγιο σας το χρονικό μιας [...]
+                    return StateMsg(State.INCORRECT, "1ADJ 3DET")
                 case "NOUN":
-                    if same_case23:
-                        return StateMsg(State.AMBIGUOUS, "1ADJ 2NOUN 23SC")
+                    # Ambiguous for nominalized adjectives even in the same case
+                    # * του όμορφου του Νίκου / του όμορφού του Νίκου
+                    # - στον αντίστοιχο του δεκαδικό.
+                    # / στο προηγούμενό του μέγεθος,
+                    # / το μεγαλύτερό της πλεονέκτημα
+                    return StateMsg(State.AMBIGUOUS, "1ADJ 3NOUN")
+                case "NUM":
+                    # - είναι μεγαλύτερο του 5
+                    return StateMsg(State.CORRECT, "1ADJ 3NUM")
+                case "PART":
+                    if w3 == "μη":
+                        return StateMsg(State.CORRECT, "1ADJ 3MI")
+                    else:
+                        # / που παρόμοιά της δεν υπάρχει αλλού [...]
+                        return StateMsg(State.INCORRECT, "1ADJ 3PART")
+                case "PRON":
+                    return StateMsg(State.INCORRECT, "1ADJ 3PRON")
+                case "PROPN":
+                    # - το αντίστοιχο του Σόλωνα.
+                    # - του ίδιου του Καποδίστρια, για λόγους [...]
+                    return StateMsg(State.CORRECT, "1ADJ 3PROPN")
                 case "VERB":
                     return StateMsg(State.AMBIGUOUS, "1ADJ 3VERB")
 
         case "PROPN":
             # High chance of being correct
             if pos3 == "VERB":
-                # CEx: Ο Άνγελός μου είπε...
+                # / Ο Άνγελός μου είπε...
                 return StateMsg(State.AMBIGUOUS, "1PROPN 3VERB")
             else:
                 return StateMsg(State.CORRECT, "1PROPN")
+
         case "ADV":
+            # - το τοπίο ανάμεσα στα δυο χωριά
+            # / χώρες, ανάμεσά τους και η Ελλάδα.
+            if w1.lower() == "ανάμεσα":
+                return StateMsg(State.AMBIGUOUS, "1ADVANA")
+
             return StateMsg(State.CORRECT, "1ADV")
+
+        case _:
+            # Not NOUN | PROPN | VERB | ADJ | ADV
+            return StateMsg(State.CORRECT, "REST")
 
     return _default_statemsg
 
