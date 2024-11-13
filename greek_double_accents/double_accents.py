@@ -35,6 +35,8 @@ from greek_double_accents.constants import (
 
 DEFAULT_PATH = Path(__file__).parent / "etc/book.txt"
 
+WARNINGS = False
+
 PUNCT = re.compile(r"[,.!?;:\n«»\"'·…]")
 VOWEL_ACCENTED = re.compile(r"[έόίύάήώ]")
 
@@ -102,7 +104,15 @@ class Entry:
 
     def add_semantic_info(self, doc: Doc) -> Literal[0, 1]:
         """Returns 0 in case of success."""
-        assert self.word_idx < len(self.line) - 2, "Faulty sentence with no final punctuation."
+        if self.word_idx >= len(self.line) - 2:
+            if WARNINGS:
+                print(
+                    "Warning "
+                    "Faulty sentence with no final punctuation.\n"
+                    f"Word: {self.word}\n"
+                    f"Sentence {self.line}"
+                )
+            return 1
 
         words = [split_punctuation(w)[0] for w in self.line[self.word_idx : self.word_idx + 3]]
         self.words = words
@@ -126,8 +136,9 @@ class Entry:
 
         # Can happen if a word in words gets wrongly tagged as PUNCT:
         # Ex. ('δέχεσαι', 'PUNCT')
-        if not len(doc_buf) == 3:
-            print(f"Warning: doc_buf is of size < 3 for {self.word}")
+        if len(doc_buf) != 3:
+            if WARNINGS:
+                print(f"Warning: doc_buf is of size < 3 for {self.word}")
             return 1
 
         # The key can't be the word in case of duplicates:
@@ -152,6 +163,8 @@ class Entry:
 
             # Debug
             # https://universaldependencies.org/u/feat/index.html
+            # For POS
+            # https://universaldependencies.org/u/pos/index.html
             semantic_info[idx]["token"] = token
             semantic_info[idx]["morph"] = token.morph
             semantic_info[idx]["verbForm"] = token.morph.get("VerbForm", ["X"])
@@ -366,7 +379,8 @@ def simple_entry_checks(entry: Entry) -> StateMsg:
 def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
     """Return True if correct, False if incorrect or undecidable."""
     if not entry.semantic_info:
-        print("Warning: this should only happen in tests")
+        if WARNINGS:
+            print("Warning: this should only happen in tests")
         doc = nlp(" ".join(entry.line))
         entry.add_semantic_info(doc)
 
