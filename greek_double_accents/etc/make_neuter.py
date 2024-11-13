@@ -2,6 +2,9 @@
 
 Actually, it selects words that end in iota such that 'word + α'
 is also in the dictionary. Turns out to be quite precise.
+
+There is also an extensive list here:
+https://el.wiktionary.org/wiki/Κατηγορία:Ουσιαστικά_που_κλίνονται_όπως_το_%27τραγούδι%27_(νέα_ελληνικά)
 """
 
 import re
