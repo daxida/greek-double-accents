@@ -1,7 +1,7 @@
 """
 TODO:
 - Make some tests > Detect False positives
-- Does spacy syllabify? Yes, but low priority (sillabify is fast)
+- Does spacy syllabify? Yes, but low priority (syllabify is fast)
 
 The states need to share prefixes based on detail:
 1VERB > 1VERB 3ADJ etc.
@@ -41,12 +41,19 @@ VOWEL_ACCENTED = re.compile(r"[έόίύάήώ]")
 # Import spacy model: greek small.
 model_name = "el_core_news_sm"  # sm / md / lg
 try:
-    nlp = spacy.load(model_name)
+    nlp = spacy.load(
+        model_name,
+        disable=["parser", "ner", "lemmatizer", "textcat"],
+    )
+    # print(nlp.pipe_names)
     # print(nlp.path)
 except OSError:
     print(f"Model '{model_name}' not found. Downloading...")
     spacy.cli.download(model_name)  # type: ignore
-    nlp = spacy.load(model_name)
+    nlp = spacy.load(
+        model_name,
+        disable=["parser", "ner", "lemmatizer", "textcat"],
+    )
 
 
 def split_punctuation(word: str) -> tuple[str, str | None]:
