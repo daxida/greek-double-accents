@@ -289,47 +289,47 @@ def analyze_line(
     lineno: int,
     n_entries_total: int,
     args: Namespace,
+    cached_doc: Doc | None = None,
 ) -> list[tuple[str, None | Entry]]:
     words = line.split()
     cnt = 0
     line_info = []
-    cached_doc = None
+
+    # Tested to correctly work: ignore them (=do not store the entry)
+    to_ignore = ("2~3SYL", "2~CPRON")
 
     for idx, word in enumerate(words):
-        if simple_word_checks(word, idx, len(words)):
-            line_info.append((word, None))
-            continue
+        info: Entry | None = None
 
-        # From here on, it is tricky
-        entry = Entry(word, idx, words, lineno, n_entries_total + cnt)
-        cnt += 1
+        if not simple_word_checks(word, idx, len(words)):
+            entry = Entry(word, idx, words, lineno, n_entries_total + cnt)
+            cnt += 1
 
-        statemsg = simple_entry_checks(entry)
-        if statemsg == DEFAULT_STATEMSG:
-            cached_doc = cached_doc or nlp(line)
-            error_code = entry.add_semantic_info(cached_doc)
-            if error_code != 0:
-                entry.statemsg = StateMsg(State.AMBIGUOUS, "SEMFAIL")
-                line_info.append((word, entry))
-                continue
-            statemsg = semantic_analysis(entry)
+            statemsg = simple_entry_checks(entry)
 
-        entry.statemsg = statemsg
+            if statemsg is not None:
+                if statemsg.msg not in to_ignore:
+                    entry.statemsg = statemsg
+                    info = entry
+            else:
+                cached_doc = cached_doc or nlp(line)
+                error_code = entry.add_semantic_info(cached_doc)
+                if error_code != 0:
+                    statemsg = StateMsg(State.AMBIGUOUS, "SEMFAIL")
+                else:
+                    statemsg = semantic_analysis(entry)
+                entry.statemsg = statemsg
+                info = entry
 
-        # Tested to correctly work: ignore them
-        to_ignore = ("2~3SYL", "2~PRON")
-        if statemsg.msg in to_ignore:
-            line_info.append((word, None))
-            continue
+        line_info.append((word, info))
 
+    for word, entry in line_info:
         # Print information
-        if entry.statemsg.state in args.select:
+        if entry and entry.statemsg.state in args.select:
             # Custom discard
             if entry.statemsg.msg != "2PUNCT":
                 if not args.message or re.match(args.message, entry.statemsg.msg):
                     entry.show_semantic_info(detail=True)
-
-        line_info.append((word, entry))
 
     return line_info
 
@@ -358,22 +358,23 @@ def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
     return False
 
 
-def simple_entry_checks(entry: Entry) -> StateMsg:
+def simple_entry_checks(entry: Entry) -> StateMsg | None:
     """Does NOT use semantic analysis."""
     # Verify that the word is not banned (False trisyllables)
-    if entry.word in FALSE_TRISYL:
+    if entry.word.lower() in FALSE_TRISYL:
         return StateMsg(State.CORRECT, "1~3SYL")
 
     # Next word (we assume it exists), must be a pronoun
     detpron, punct = split_punctuation(entry.line[entry.word_idx + 1])
     if detpron not in PRON:
-        return StateMsg(State.CORRECT, "2~PRON")
+        # CPRON = Custom PRON, to differentiate it from spaCy PRON
+        return StateMsg(State.CORRECT, "2~CPRON")
 
     # This is a mistake and it is fixable
     if punct:
         return StateMsg(State.INCORRECT, "2PUNCT")
 
-    return DEFAULT_STATEMSG
+    return None
 
 
 def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
