@@ -403,6 +403,27 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
 
     _default_statemsg = StateMsg(State.PENDING, f"1{pos1} 2{pos2} 3{pos3}")
 
+    if pos3 in ("CCONJ", "SCONJ"):
+        # Works like a stop, and so the logic of punctuation
+        # seems to also apply here.
+        #
+        # VERBS
+        # > CCONJ: και, κι
+        # - αυτό, άκουσε τον κι αυτόν, εσύ, [...]
+        # - εκλεκτό, ζύμωσε το και κάνε πίττες».
+        # NOUNS
+        # > CCONJ
+        # - τα γόνατα της και σωριάστηκε στο...
+        # > SCONJ
+        # - η κράτηση τους όταν περάσει ο [...]
+        # - στα επιτεύγματα της καθώς φέτος κλείνουν
+        # ADJS
+        # > CCONJ
+        # - τα μυστήρια της και ιδιαίτερα με
+        # > SCONJ
+        # - το τηλέφωνο σας όταν βρίσκεστε σε
+        return StateMsg(State.INCORRECT, "CONJ")
+
     match pos1:
         case "VERB":
             # print(w1, si1["pos"], " > ", si1["morph"])
