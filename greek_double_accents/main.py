@@ -34,8 +34,6 @@ from greek_double_accents.utils import (
     split_text,
 )
 
-DEFAULT_PATH = Path(__file__).parent / "etc/book.txt"
-
 WARNINGS = False
 
 
@@ -210,7 +208,7 @@ def tag_text(text: str) -> TaggedText:
     return tagged_paragraphs
 
 
-def tagged_text_to_raw(tagged_paragraphs: TaggedText, *, replace: bool) -> str:
+def tagged_text_to_raw(tagged_paragraphs: TaggedText) -> str:
     """Convert a TaggedText back to a string."""
     new_paragraphs = []
 
@@ -220,7 +218,7 @@ def tagged_text_to_raw(tagged_paragraphs: TaggedText, *, replace: bool) -> str:
             new_line = []
             for word, info in line_info:
                 nword = word
-                if replace and info and info.statemsg.state == State.INCORRECT:
+                if info and info.statemsg.state == State.INCORRECT:
                     nword = add_accent(word)
                 new_line.append(nword)
             new_paragraph.append(" ".join(new_line))
@@ -240,7 +238,6 @@ def deep_flatten(nested):  # noqa
 
 def analyze_text(
     text: str,
-    replace: bool,
     *,
     print_state: str = "",
     print_statemsg: str = "",
@@ -253,7 +250,7 @@ def analyze_text(
         print_state=print_state,
         print_statemsg=print_statemsg,
     )
-    new_text = tagged_text_to_raw(tagged_paragraphs, replace=replace)
+    new_text = tagged_text_to_raw(tagged_paragraphs)
 
     if reference_path:
         compare_with_reference(tagged_paragraphs, reference_path)
@@ -732,6 +729,16 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
 def parse_args() -> Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "input_path",
+        type=Path,
+        help="Path to the input file",
+    )
+    parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Replace the input file",
+    )
+    parser.add_argument(
         "-s",
         "--select",
         type=str,
@@ -740,17 +747,9 @@ def parse_args() -> Namespace:
     )
     parser.add_argument("-m", "--message", type=str, default="", help="State message")
     parser.add_argument(
-        "-i",
-        "--input-path",
-        type=Path,
-        default=DEFAULT_PATH,
-        help="Path to the input file",
-    )
-    parser.add_argument(
         "-o",
         "--output-path",
         type=Path,
-        default=None,
         help="Path to the output file",
     )
     parser.add_argument(
@@ -763,14 +762,13 @@ def parse_args() -> Namespace:
         "-d",
         "--diagnostics",
         action="store_true",
-        help="Enable diagnostics output",
+        help="(DEBUG) Enable diagnostics output",
     )
 
     args = parser.parse_args()
 
     if not args.output_path:
-        ipath = args.input_path
-        args.output_path = ipath.with_stem(f"{ipath.stem}_fix")
+        args.output_path = args.input_path
 
     state_map = {
         "C": State.CORRECT,
@@ -783,7 +781,7 @@ def parse_args() -> Namespace:
     return args
 
 
-def main(replace: bool = True) -> None:
+def main() -> None:
     args = parse_args()
 
     filepath = args.input_path
@@ -793,7 +791,6 @@ def main(replace: bool = True) -> None:
     start = time()
     new_text = analyze_text(
         text,
-        replace,
         print_state=args.select,
         print_statemsg=args.message,
         reference_path=args.reference_path,
@@ -801,7 +798,7 @@ def main(replace: bool = True) -> None:
     )
     print(f"Ellapsed {time() - start:.3f}sec")
 
-    if replace:
+    if args.fix:
         opath = args.output_path
         with opath.open("w", encoding="utf-8") as file:
             file.write(new_text)
