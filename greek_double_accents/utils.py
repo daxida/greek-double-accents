@@ -1,12 +1,40 @@
 import re
 
+from greek_accentuation.accentuation import syllable_add_accent
+from greek_accentuation.syllabify import ACUTE, syllabify
+
 VOWEL_ACCENTED = re.compile(r"[έόίύάήώ]")
 PUNCT = re.compile(r"[,.!?;:\n«»\"'·…]")
 LINE_RE = re.compile(r"[^.!?;:…»]+(?:[.!?;:…»\n]+,?)?")
+# \b\w*[έόίύάήώΈΌΊΎΆΉΏ]\w*[έόίύάήώΈΌΊΎΆΉΏ]\w*\b
+REMOVE_TRANS = str.maketrans("έόίύάήώ", "εοιυαηω")
+
+
+def add_accent(word: str) -> str:
+    syls = syllabify(word)
+    nsyls = syls[:-1] + [syllable_add_accent(syls[-1], ACUTE)]
+    return "".join(nsyls)
+
+
+def remove_accent(word: str) -> str:
+    s = syllabify(word)
+    return "".join(s[:-1] + [s[-1].translate(REMOVE_TRANS)])
 
 
 def has_accent(syllable: str) -> bool:
     return VOWEL_ACCENTED.search(syllable) is not None
+
+
+def has_correct_double_accent(word: str) -> bool:
+    if "-" in word:
+        return False
+    s = syllabify(word)
+    return len(s) > 2 and has_accent(s[-3]) and has_accent(s[-1])
+
+
+def is_simple_proparoxytone(word: str) -> bool:
+    s = syllabify(word)
+    return len(s) > 2 and has_accent(s[-3]) and not has_accent(s[-1])
 
 
 def split_punctuation(word: str) -> tuple[str, str | None]:

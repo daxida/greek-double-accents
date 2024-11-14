@@ -20,11 +20,6 @@ from typing import Any, Literal
 
 import spacy
 import spacy.cli
-
-# For ancient greek but seems to work fine for modern
-# pip install greek-accentuation==1.2.0
-from greek_accentuation.accentuation import syllable_add_accent
-from greek_accentuation.syllabify import ACUTE, syllabify
 from spacy.tokens import Doc
 
 from greek_double_accents.constants import (
@@ -32,7 +27,12 @@ from greek_double_accents.constants import (
     PRON,
     PRON_GEN,
 )
-from greek_double_accents.utils import has_accent, split_punctuation, split_text
+from greek_double_accents.utils import (
+    add_accent,
+    is_simple_proparoxytone,
+    split_punctuation,
+    split_text,
+)
 
 DEFAULT_PATH = Path(__file__).parent / "etc/book.txt"
 
@@ -189,12 +189,6 @@ class Entry:
     def __str__(self) -> str:
         # return f"{self.state:<15} {self.get_line_ctx}"
         return self.detailed_str()
-
-
-def add_accent(word: str) -> str:
-    syls = syllabify(word)
-    nsyls = syls[:-1] + [syllable_add_accent(syls[-1], ACUTE)]
-    return "".join(nsyls)
 
 
 TaggedWord = tuple[str, Entry | None]
@@ -439,12 +433,7 @@ def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
     if wpunct:
         return True
 
-    # Need at least three syllables, with the antepenult accented...
-    syllables = syllabify(word)
-    if len(syllables) < 3 or not has_accent(syllables[-3]):
-        return True
-    # ...and the last one unaccented (otherwise it is not an error)
-    if has_accent(syllables[-1]):
+    if not is_simple_proparoxytone(word):
         return True
 
     return False
