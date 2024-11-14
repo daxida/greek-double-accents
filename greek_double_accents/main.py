@@ -32,13 +32,12 @@ from greek_double_accents.constants import (
     PRON,
     PRON_GEN,
 )
-from greek_double_accents.utils import split_punctuation, split_text
+from greek_double_accents.utils import has_accent, split_punctuation, split_text
 
 DEFAULT_PATH = Path(__file__).parent / "etc/book.txt"
 
 WARNINGS = False
 
-VOWEL_ACCENTED = re.compile(r"[έόίύάήώ]")
 
 # Import spacy model: greek small.
 model_name = "el_core_news_sm"  # sm / md / lg
@@ -442,10 +441,10 @@ def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
 
     # Need at least three syllables, with the antepenult accented...
     syllables = syllabify(word)
-    if len(syllables) < 3 or not VOWEL_ACCENTED.search(syllables[-3]):
+    if len(syllables) < 3 or not has_accent(syllables[-3]):
         return True
     # ...and the last one unaccented (otherwise it is not an error)
-    if VOWEL_ACCENTED.search(syllables[-1]):
+    if has_accent(syllables[-1]):
         return True
 
     return False

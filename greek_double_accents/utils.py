@@ -1,7 +1,12 @@
 import re
 
+VOWEL_ACCENTED = re.compile(r"[έόίύάήώ]")
 PUNCT = re.compile(r"[,.!?;:\n«»\"'·…]")
 LINE_RE = re.compile(r"[^.!?;:…»]+(?:[.!?;:…»\n]+,?)?")
+
+
+def has_accent(syllable: str) -> bool:
+    return VOWEL_ACCENTED.search(syllable) is not None
 
 
 def split_punctuation(word: str) -> tuple[str, str | None]:
