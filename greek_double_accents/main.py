@@ -174,7 +174,7 @@ class Entry:
     def detailed_str(self) -> str:
         hstart = "\033[1m"
         hend = "\033[0m"
-        line_ctx = self.line_ctx
+        line_ctx = self.line_ctx.replace("\n", "⏎")
         hctx = line_ctx.replace(self.word, f"{hstart}{self.word}{hend}")
         state_colors = {
             State.CORRECT: "\033[32m",  # Green
@@ -759,17 +759,17 @@ def parse_args() -> Namespace:
         help="Path to the input file",
     )
     parser.add_argument(
-        "-r",
-        "--reference-path",
-        type=Path,
-        help="(DEBUG) Path to the reference file",
-    )
-    parser.add_argument(
         "-o",
         "--output-path",
         type=Path,
         default=None,
         help="Path to the output file",
+    )
+    parser.add_argument(
+        "-r",
+        "--reference-path",
+        type=Path,
+        help="(DEBUG) Path to the reference file",
     )
     parser.add_argument(
         "-d",
