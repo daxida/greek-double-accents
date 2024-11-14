@@ -66,6 +66,27 @@ def split_punctuation(word: str) -> tuple[str, str | None]:
     return word, None
 
 
+def split_text(text: str) -> list[list[list[str]]]:
+    return [
+        [line.split(" ") for line in split_paragraph(par)] for par in text.splitlines(keepends=True)
+    ]
+
+
+def join_words(words: list[list[list[str]]]) -> str:
+    """The reverse of split_text."""
+    new_pars = []
+    for par in words:
+        new_line = []
+        for line in par:
+            new_line.append(" ".join(line))
+        new_pars.append("".join(new_line))
+    return "".join(new_pars)
+
+
+def split_paragraph(paragraph: str) -> list[str]:
+    return LINE_RE.findall(paragraph)
+
+
 class State(Enum):
     CORRECT = "correct"
     INCORRECT = "incorrect"
@@ -212,16 +233,14 @@ TaggedText = list[list[TaggedLine]]
 
 
 def tag_text(text: str) -> TaggedText:
-    paragraphs = text.splitlines()
+    stext = split_text(text)
 
     tagged_paragraphs = []
-    for parno, paragraph in enumerate(paragraphs, start=1):
+    for parno, paragraph in enumerate(stext, start=1):
         tagged_paragraph = []
-        par_lines = LINE_RE.findall(paragraph)
-        for line in par_lines:
-            if line := line.strip():
-                line_info = analyze_line(line, parno)
-                tagged_paragraph.append(line_info)
+        for line in paragraph:
+            line_info = analyze_line(line, parno)
+            tagged_paragraph.append(line_info)
         tagged_paragraphs.append(tagged_paragraph)
 
     return tagged_paragraphs
@@ -241,9 +260,9 @@ def tagged_text_to_raw(tagged_paragraphs: TaggedText, *, replace: bool) -> str:
                     nword = add_accent(word)
                 new_line.append(nword)
             new_paragraph.append(" ".join(new_line))
-        new_paragraphs.append(" ".join(new_paragraph))
+        new_paragraphs.append("".join(new_paragraph))
 
-    return "\n".join(new_paragraphs)
+    return "".join(new_paragraphs)
 
 
 def deep_flatten(nested):  # noqa
@@ -322,27 +341,26 @@ def compare_with_reference(tagged_paragraphs: TaggedText, reference_path: Path) 
 
     Compares predicted results against actual ones."""
     ref_text = reference_path.open("r", encoding="utf-8").read().strip()
-    ref_paragraphs = ref_text.splitlines()
-    assert len(ref_paragraphs) == len(
-        tagged_paragraphs
-    ), f"{len(ref_paragraphs)} != {len(tagged_paragraphs)}"
-    ref_lines = [
-        [sentence.split() for sentence in LINE_RE.findall(paragraph)]
-        for paragraph in ref_paragraphs
-    ]
+    ref_words = split_text(ref_text)
+    assert len(ref_words) == len(tagged_paragraphs), f"{len(ref_words)} != {len(tagged_paragraphs)}"
 
     false_positives = []
     false_negatives = []
     true_positives = 0
     true_negatives = 0
-    print_false_pn = True
+    print_false_pn = False
 
-    word_it = deep_flatten(tagged_paragraphs)
-    ref_it = deep_flatten(ref_lines)
+    words_it = zip(
+        deep_flatten(tagged_paragraphs),
+        deep_flatten(ref_words),
+    )
 
-    for (word, entry), refword in zip(word_it, ref_it):
+    for (word, entry), refword in words_it:
         if not entry:
             continue
+
+        if word and not refword:
+            raise ValueError(f"Error with the split logic? {word=} but {refword=}")
 
         state = entry.statemsg.state
         if word == refword and state == State.INCORRECT:
@@ -352,7 +370,6 @@ def compare_with_reference(tagged_paragraphs: TaggedText, reference_path: Path) 
             false_positives.append(word)
         if word != refword and state == State.CORRECT:
             # These are whatever
-            # print(f"False negative {word} // {entry.line_ctx}")
             if print_false_pn:
                 print(f"\033[43m[FNeg]\033[0m: {entry}")
             false_negatives.append(word)
@@ -375,8 +392,7 @@ def compare_with_reference(tagged_paragraphs: TaggedText, reference_path: Path) 
     # print(sorted(set(false_negatives)))
 
 
-def analyze_line(line: str, lineno: int, cached_doc: Doc | None = None) -> TaggedLine:
-    words = line.split()
+def analyze_line(words: list[str], lineno: int, cached_doc: Doc | None = None) -> TaggedLine:
     line_info = []
 
     # Tested to correctly work: ignore them (=do not store the entry)
@@ -395,7 +411,7 @@ def analyze_line(line: str, lineno: int, cached_doc: Doc | None = None) -> Tagge
                     entry.statemsg = statemsg
                     info = entry
             else:
-                cached_doc = cached_doc or nlp(line)
+                cached_doc = cached_doc or nlp(" ".join(words))
                 error_code = entry.add_semantic_info(cached_doc)
                 if error_code != 0:
                     statemsg = StateMsg(State.AMBIGUOUS, "SEMFAIL")
@@ -415,6 +431,8 @@ def print_tagged_text(
     print_state: str = "",
     print_statemsg: str = "",
 ) -> None:
+    if not print_state:
+        return
     for paragraph in paragraphs:
         for line_info in paragraph:
             print_line_info(
