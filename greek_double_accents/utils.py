@@ -37,6 +37,15 @@ def is_simple_proparoxytone(word: str) -> bool:
     return len(s) > 2 and has_accent(s[-3]) and not has_accent(s[-1])
 
 
+def deep_flatten(nested):  # noqa
+    """Flatten an arbitrarily deep nesting of lists."""
+    for item in nested:
+        if isinstance(item, list):
+            yield from deep_flatten(item)
+        else:
+            yield item
+
+
 def split_punctuation(word: str) -> tuple[str, str | None]:
     """Splits a word into its base form and any trailing punctuation."""
     if mtch := PUNCT.search(word):

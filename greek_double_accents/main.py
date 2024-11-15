@@ -29,6 +29,7 @@ from greek_double_accents.constants import (
 )
 from greek_double_accents.utils import (
     add_accent,
+    deep_flatten,
     is_simple_proparoxytone,
     split_punctuation,
     split_text,
@@ -227,15 +228,6 @@ def tagged_text_to_raw(tagged_paragraphs: TaggedText) -> str:
     return "".join(new_paragraphs)
 
 
-def deep_flatten(nested):  # noqa
-    """Flatten an arbitrarily deep nesting of lists."""
-    for item in nested:
-        if isinstance(item, list):
-            yield from deep_flatten(item)
-        else:
-            yield item
-
-
 def analyze_text(
     text: str,
     *,
@@ -297,10 +289,16 @@ def _diagnostics(tagged_paragraphs: TaggedText) -> None:
     print()
 
 
-def compare_with_reference(tagged_paragraphs: TaggedText, reference_path: Path) -> None:
+def compare_with_reference(
+    tagged_paragraphs: TaggedText,
+    reference_path: Path,
+    *,
+    print_false_pn: bool = False,
+) -> None:
     """Debugging function.
 
-    Compares predicted results against actual ones."""
+    Compares predicted results against actual ones.
+    """
     ref_text = reference_path.open("r", encoding="utf-8").read().strip()
     ref_words = split_text(ref_text)
     assert len(ref_words) == len(tagged_paragraphs), f"{len(ref_words)} != {len(tagged_paragraphs)}"
@@ -309,7 +307,6 @@ def compare_with_reference(tagged_paragraphs: TaggedText, reference_path: Path) 
     false_negatives = []
     true_positives = 0
     true_negatives = 0
-    print_false_pn = False
 
     words_it = zip(
         deep_flatten(tagged_paragraphs),
