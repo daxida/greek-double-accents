@@ -1,4 +1,4 @@
-from greek_double_accents.double_accents import (
+from greek_double_accents.main import (
     Entry,
     State,
     StateMsg,
@@ -16,7 +16,7 @@ def make_test_simple(
 ) -> None:
     """No semantic info is needed for this."""
     entry = Entry(word, word_idx, line_str.split())
-    received: StateMsg = simple_entry_checks(entry)
+    received = simple_entry_checks(entry)
     expected = StateMsg(state, msg)
     assert received == expected
 
