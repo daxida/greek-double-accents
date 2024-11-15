@@ -209,9 +209,13 @@ def tag_text(text: str) -> TaggedText:
     return tagged_paragraphs
 
 
-def tagged_text_to_raw(tagged_paragraphs: TaggedText) -> str:
-    """Convert a TaggedText back to a string."""
+def tagged_text_to_raw(tagged_paragraphs: TaggedText) -> tuple[str, int]:
+    """Convert a TaggedText back to a string.
+
+    Returns the fixed text together with the number of errors found.
+    """
     new_paragraphs = []
+    n_errors = 0
 
     for tagged_paragraph in tagged_paragraphs:
         new_paragraph = []
@@ -221,11 +225,12 @@ def tagged_text_to_raw(tagged_paragraphs: TaggedText) -> str:
                 nword = word
                 if info and info.statemsg.state == State.INCORRECT:
                     nword = add_accent(word)
+                    n_errors += 1
                 new_line.append(nword)
             new_paragraph.append(" ".join(new_line))
         new_paragraphs.append("".join(new_paragraph))
 
-    return "".join(new_paragraphs)
+    return "".join(new_paragraphs), n_errors
 
 
 def analyze_text(
@@ -236,7 +241,11 @@ def analyze_text(
     print_statemsg: str = "",
     reference_path: Path | None = None,
     diagnostics: bool = False,
-) -> str:
+) -> tuple[str, int]:
+    """Scan for and fix missing double accents in a string.
+
+    Returns the fixed text together with the number of errors found.
+    """
     tagged_paragraphs = tag_text(text)
     if not fix:
         print_tagged_text(
@@ -244,7 +253,7 @@ def analyze_text(
             print_state=print_state,
             print_statemsg=print_statemsg,
         )
-    new_text = tagged_text_to_raw(tagged_paragraphs)
+    new_text, n_errors = tagged_text_to_raw(tagged_paragraphs)
 
     if reference_path:
         compare_with_reference(tagged_paragraphs, reference_path)
@@ -252,7 +261,7 @@ def analyze_text(
     if diagnostics:
         _diagnostics(tagged_paragraphs)
 
-    return new_text
+    return new_text, n_errors
 
 
 def _diagnostics(tagged_paragraphs: TaggedText) -> None:
@@ -788,7 +797,7 @@ def main() -> None:
         text = file.read().strip()
 
     start = time()
-    new_text = analyze_text(
+    new_text, n_errors = analyze_text(
         text,
         fix=args.fix,
         print_state=args.select,
@@ -796,7 +805,7 @@ def main() -> None:
         reference_path=args.reference_path,
         diagnostics=args.diagnostics,
     )
-    print(f"Ellapsed {time() - start:.3f}sec")
+    print(f"{n_errors} errors found [{time() - start:.3f}s]")
 
     if args.fix:
         opath = args.output_path
