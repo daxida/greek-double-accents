@@ -5,7 +5,7 @@ from greek_accentuation.syllabify import ACUTE, syllabify
 
 VOWEL_ACCENTED = re.compile(r"[έόίύάήώ]")
 PUNCT = re.compile(r"[,.!?;:\n«»\"'·…]")
-LINE_RE = re.compile(r"[^.!?;:…»]+(?:[.!?;:…»\n]+,?)?")
+LINE_RE = re.compile(r"\.*[^.!?;:…»]+(?:[.!?;:…»\n]+,?)?")
 # \b\w*[έόίύάήώΈΌΊΎΆΉΏ]\w*[έόίύάήώΈΌΊΎΆΉΏ]\w*\b
 REMOVE_TRANS = str.maketrans("έόίύάήώ", "εοιυαηω")
 
