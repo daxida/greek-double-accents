@@ -231,17 +231,19 @@ def tagged_text_to_raw(tagged_paragraphs: TaggedText) -> str:
 def analyze_text(
     text: str,
     *,
+    fix: bool = True,
     print_state: str = "",
     print_statemsg: str = "",
     reference_path: Path | None = None,
     diagnostics: bool = False,
 ) -> str:
     tagged_paragraphs = tag_text(text)
-    print_tagged_text(
-        tagged_paragraphs,
-        print_state=print_state,
-        print_statemsg=print_statemsg,
-    )
+    if not fix:
+        print_tagged_text(
+            tagged_paragraphs,
+            print_state=print_state,
+            print_statemsg=print_statemsg,
+        )
     new_text = tagged_text_to_raw(tagged_paragraphs)
 
     if reference_path:
@@ -285,7 +287,7 @@ def _diagnostics(tagged_paragraphs: TaggedText) -> None:
 
     not_pending = n_total_states - record_states[State.PENDING]
     if n_total_states:
-        print(f"* Coverage  {not_pending / n_total_states:.02f}%")
+        print(f"* Coverage  {100 * not_pending / n_total_states:.02f}%")
     print()
 
 
@@ -788,6 +790,7 @@ def main() -> None:
     start = time()
     new_text = analyze_text(
         text,
+        fix=args.fix,
         print_state=args.select,
         print_statemsg=args.message,
         reference_path=args.reference_path,
