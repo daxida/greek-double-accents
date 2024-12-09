@@ -427,6 +427,7 @@ def print_line_info(
 
 def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
     """Discard a word based on punctuation and number of syllables.
+
     Returns True if we can discard the word, False otherwise.
     """
     # Word is at the end
@@ -735,7 +736,12 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
 
 
 def parse_args() -> Namespace:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Check for missing Greek double accents.",
+        usage=argparse.SUPPRESS,
+        formatter_class=lambda prog: argparse.HelpFormatter(prog, max_help_position=35, width=100),
+    )
+
     parser.add_argument(
         "input_path",
         type=Path,
@@ -751,7 +757,7 @@ def parse_args() -> Namespace:
         "--select",
         type=str,
         default="I",
-        help="Select states using C (CORRECT), I (INCORRECT), P (PENDING), A (AMBIGUOUS)",
+        help="Select states using: C(ORRECT), I(NCORRECT), P(ENDING), A(MBIGUOUS)",
     )
     parser.add_argument("-m", "--message", type=str, default="", help="State message")
     parser.add_argument(
