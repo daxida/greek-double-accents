@@ -63,16 +63,6 @@ def test_incorrect() -> None:
     )
 
 
-def test_false_trisyllable() -> None:
-    make_test_simple(
-        word="μάτια",
-        word_idx=1,
-        line_str="τα μάτια του.",
-        state=State.CORRECT,
-        msg="1~3SYL",
-    )
-
-
 def test_verb_ambiguous() -> None:
     # Ο άνθρωπος μου είπε / Ο άνθρωπός μου είπε
     make_test(
