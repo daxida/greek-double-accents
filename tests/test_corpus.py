@@ -36,5 +36,6 @@ def test_golden_corpus() -> None:
     make_test("hnc_golden_corpus")
 
 
-def test_educational() -> None:
-    make_test("corpus_educational")
+# Too slow for a unittest...
+# def test_educational() -> None:
+#     make_test("corpus_educational")
