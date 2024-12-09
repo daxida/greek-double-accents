@@ -23,7 +23,6 @@ import spacy.cli
 from spacy.tokens import Doc
 
 from greek_double_accents.constants import (
-    FALSE_TRISYL,
     PRON,
     PRON_GEN,
 )
@@ -196,6 +195,12 @@ TaggedText = list[list[TaggedLine]]
 
 
 def tag_text(text: str) -> TaggedText:
+    """Convert a string into a TaggedText.
+
+    In short, a TaggedText is a collection of TaggedWords, which
+    are just words with an Entry object that contains information
+    about the correctness of the word spelling.
+    """
     stext = split_text(text)
 
     tagged_paragraphs = []
@@ -255,6 +260,7 @@ def analyze_text(
         )
     new_text, n_errors = tagged_text_to_raw(tagged_paragraphs)
 
+    # For testing
     if reference_path:
         compare_with_reference(tagged_paragraphs, reference_path)
 
@@ -265,6 +271,7 @@ def analyze_text(
 
 
 def _diagnostics(tagged_paragraphs: TaggedText) -> None:
+    """Print some extra information about errors."""
     record_statemsgs = Counter()
     record_states = Counter()
     record_msgs = Counter()
@@ -306,7 +313,7 @@ def compare_with_reference(
     *,
     print_false_pn: bool = False,
 ) -> None:
-    """Debugging function.
+    """Testing function.
 
     Compares predicted results against actual ones.
     """
@@ -446,10 +453,9 @@ def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
 
 
 def simple_entry_checks(entry: Entry) -> StateMsg | None:
-    """Does NOT use semantic analysis."""
-    # Verify that the word is not banned (False trisyllables)
-    if entry.word.lower() in FALSE_TRISYL:
-        return StateMsg(State.CORRECT, "1~3SYL")
+    """Check the following word and punctuation.
+
+    Does NOT use semantic analysis."""
 
     # Next word (we assume it exists), must be a pronoun
     detpron, punct = split_punctuation(entry.line[entry.word_idx + 1])
