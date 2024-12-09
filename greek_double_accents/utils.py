@@ -1,7 +1,7 @@
 import re
 
-from greek_accentuation.accentuation import syllable_add_accent
-from greek_accentuation.syllabify import ACUTE, syllabify
+from grac import add_acute_at
+from grac import syllabify_el as syllabify
 
 VOWEL_ACCENTED = re.compile(r"[έόίύάήώ]")
 PUNCT = re.compile(r"[,.!?;:\n«»\"'·…]")
@@ -11,17 +11,18 @@ REMOVE_TRANS = str.maketrans("έόίύάήώ", "εοιυαηω")
 
 
 def add_accent(word: str) -> str:
-    syls = syllabify(word)
-    nsyls = syls[:-1] + [syllable_add_accent(syls[-1], ACUTE)]
-    return "".join(nsyls)
+    """Add acute to the last syllable."""
+    return add_acute_at(word, 1)
 
 
 def remove_accent(word: str) -> str:
+    """Remove acute from the last syllable."""
     s = syllabify(word)
     return "".join(s[:-1] + [s[-1].translate(REMOVE_TRANS)])
 
 
 def has_accent(syllable: str) -> bool:
+    """Check if the syllable has a lowercase acute accent."""
     return VOWEL_ACCENTED.search(syllable) is not None
 
 

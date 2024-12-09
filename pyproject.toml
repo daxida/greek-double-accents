@@ -8,7 +8,9 @@ version = "1.0.0"
 readme = "README.md"
 dependencies = [
     "spacy",
-    "greek-accentuation==1.2.0",
+    # For downloading the spacy model...
+    "pip",
+    "grac @ git+https://github.com/daxida/grac.git#egg=grac&subdirectory=py-grac",
 ]
 
 [project.optional-dependencies]
