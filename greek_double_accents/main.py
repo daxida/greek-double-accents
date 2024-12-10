@@ -95,6 +95,7 @@ class Entry:
     line: list[str]
     line_number: int = 0
     statemsg: StateMsg = StateMsg(State.PENDING, "TODO")
+    tried_adding_semantic_info: bool = False
     semantic_info: list[dict[str, Any]] | None = None
     words: list[str] | None = None
 
@@ -112,6 +113,8 @@ class Entry:
 
         Returns 0 in case of success.
         """
+        self.tried_adding_semantic_info = True
+
         if self.word_idx + 3 > len(self.line):
             # Note that this could happen in titles, where there can
             # be no final punctuation.
@@ -170,12 +173,15 @@ class Entry:
 
         return 0
 
-    def show_semantic_info(self, detail: bool = False) -> None:
+    def fmt_semantic_info(self) -> str:
         cyan = "\033[36m"
         cend = "\033[0m"
 
         if not self.semantic_info:
-            semantic_info = f"{cyan}No semantic info...{cend}"
+            if self.tried_adding_semantic_info:
+                semantic_info = f"{cyan}No semantic info...{cend}"
+            else:
+                semantic_info = ""
         else:
             si1, si2, si3 = self.semantic_info
             semantic_info = (
@@ -184,9 +190,9 @@ class Entry:
                 f"{si1['case']} {si2['case']} {si3['case']}{cend}"
             )
 
-        print(self, semantic_info if detail else "")
+        return semantic_info
 
-    def detailed_str(self) -> str:
+    def fmt(self, verbose: bool = True) -> str:
         # Highlighting
         h_fr = "\033[1m"
         h_to = "\033[0m"
@@ -194,18 +200,21 @@ class Entry:
 
         color = self.statemsg.state.color
         h_ctx = line_ctx.replace(self.word, f"{h_fr}{color}{self.word}{h_to}")
-
-        state_letter = str(self.statemsg.state)[6]
-        # TODO: This should be optional to print
-        statemsg_fmt = f"{h_fr}{color}[{state_letter} {self.statemsg.msg}]{h_to} "
-        statemsg_fmt = ""
         lineno = f"\033[32m{self.line_number}{h_to}"
 
-        return f"{lineno}: {statemsg_fmt}{h_ctx}"
+        if verbose:
+            state_letter = str(self.statemsg.state)[6]
+            statemsg_fmt = f"{h_fr}{color}[{state_letter} {self.statemsg.msg}]{h_to} "
+            semantic_info = f" {self.fmt_semantic_info()}"
+        else:
+            statemsg_fmt = ""
+            semantic_info = ""
+
+        return f"{lineno}: {statemsg_fmt}{h_ctx}{semantic_info}"
 
     def __str__(self) -> str:
         # return f"{self.state:<15} {self.get_line_ctx}"
-        return self.detailed_str()
+        return self.fmt()
 
 
 TaggedWord = tuple[str, Entry | None]
@@ -266,6 +275,7 @@ def analyze_text(
     print_statemsg: str = "",
     reference_path: Path | None = None,
     diagnostics: bool = False,
+    verbose: bool = False,
 ) -> tuple[str, int]:
     """Scan for and fix missing double accents in a string.
 
@@ -277,6 +287,7 @@ def analyze_text(
             tagged_paragraphs,
             print_states=print_states,
             print_statemsg=print_statemsg,
+            verbose=verbose,
         )
     new_text, n_errors = tagged_text_to_string(tagged_paragraphs)
 
@@ -443,6 +454,7 @@ def print_tagged_text(
     *,
     print_states: list[State],
     print_statemsg: str,
+    verbose: bool,
 ) -> None:
     for paragraph in paragraphs:
         for line_info in paragraph:
@@ -450,6 +462,7 @@ def print_tagged_text(
                 line_info,
                 print_states=print_states,
                 print_statemsg=print_statemsg,
+                verbose=verbose,
             )
 
 
@@ -458,14 +471,12 @@ def print_line_info(
     *,
     print_states: list[State],
     print_statemsg: str,
+    verbose: bool,
 ) -> None:
     for _, entry in line_info:
         if entry and entry.statemsg.state in print_states:
-            # FIX: This branching makes little sense
-            if entry.statemsg.msg == "2PUNCT":
-                print(entry)
-            elif not print_statemsg or re.match(print_statemsg, entry.statemsg.msg):
-                entry.show_semantic_info(detail=False)
+            if not print_statemsg or re.match(print_statemsg, entry.statemsg.msg):
+                print(entry.fmt(verbose))
 
 
 def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
@@ -803,9 +814,10 @@ def parse_args() -> Namespace:
     )
 
     parser.add_argument(
-        "input_path",
-        type=Path,
-        help="Path to the input file",
+        "files",
+        type=str,
+        nargs="+",
+        help="File path or glob pattern to process",
     )
     parser.add_argument(
         "--fix",
@@ -839,6 +851,12 @@ def parse_args() -> Namespace:
         help="(DEBUG) Enable diagnostics output",
     )
     parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="(DEBUG) Print verbose output",
+    )
+    parser.add_argument(
         "-a",
         "--analysis",
         action="store_true",
@@ -847,8 +865,16 @@ def parse_args() -> Namespace:
 
     args = parser.parse_args()
 
+    args.files = [Path(f) for f in args.files]
+
     if not args.output_path:
-        args.output_path = args.input_path
+        args.output_path = Path()
+
+    if args.select:
+        for c in args.select:
+            if c not in "ACIP":
+                print(f"select arguments '{c}' need to be in 'ACIP'")
+                exit(1)
 
     if args.analysis is True:
         lazy_load_spacy_model()
@@ -867,28 +893,37 @@ def parse_args() -> Namespace:
 def main() -> None:
     args = parse_args()
 
-    filepath = args.input_path
-    with filepath.open("r", encoding="utf-8") as file:
-        text = file.read().strip()
+    for idx, path in enumerate(args.files):
+        if idx > 0:
+            print()
+        print(f"\033[35m{str(path)}\033[0m")
 
-    start = time()
-    new_text, n_errors = analyze_text(
-        text,
-        fix=args.fix,
-        analysis=args.analysis,
-        print_states=args.select,
-        print_statemsg=args.message,
-        reference_path=args.reference_path,
-        diagnostics=args.diagnostics,
-    )
+        with path.open("r", encoding="utf-8") as file:
+            text = file.read().strip()
 
-    print(f"Found \033[31m{n_errors}\033[0m errors [{time() - start:.3f}s]")
+        start = time()
+        new_text, n_errors = analyze_text(
+            text,
+            fix=args.fix,
+            analysis=args.analysis,
+            print_states=args.select,
+            print_statemsg=args.message,
+            reference_path=args.reference_path,
+            diagnostics=args.diagnostics,
+            verbose=args.verbose,
+        )
 
-    if args.fix:
-        opath = args.output_path
-        with opath.open("w", encoding="utf-8") as file:
-            file.write(new_text)
-        print(f"The text has been updated in '{opath}'.")
+        if not args.fix and n_errors > 0:
+            suggestion = " Pass the --fix flag to fix them."
+        else:
+            suggestion = ""
+        print(f"[{time() - start:.3f}s] Found \033[31m{n_errors}\033[0m errors.{suggestion}")
+
+        if args.fix:
+            opath = args.output_path
+            with opath.open("w", encoding="utf-8") as file:
+                file.write(new_text)
+            print(f"The text has been updated in '{opath}'.")
 
 
 if __name__ == "__main__":
