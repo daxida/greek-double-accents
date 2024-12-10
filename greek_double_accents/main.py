@@ -72,6 +72,15 @@ class State(Enum):
     PENDING = "pending"
     AMBIGUOUS = "ambiguous"
 
+    @property
+    def color(self) -> str:
+        return {
+            "correct": "\033[32m",  # Green
+            "incorrect": "\033[31m",  # Red
+            "pending": "\033[33m",  # Yellow
+            "ambiguous": "\033[34m",  # Blue
+        }[self.value]
+
 
 @dataclass(frozen=True)  # For hashing
 class StateMsg:
@@ -175,7 +184,7 @@ class Entry:
                 f"{si1['case']} {si2['case']} {si3['case']}{cend}"
             )
 
-        print(self if detail else "", semantic_info)
+        print(self, semantic_info if detail else "")
 
     def detailed_str(self) -> str:
         # Highlighting
@@ -183,14 +192,7 @@ class Entry:
         h_to = "\033[0m"
         line_ctx = self.line_ctx.replace("\n", "⏎").strip()
 
-        state_colors = {
-            State.CORRECT: "\033[32m",  # Green
-            State.INCORRECT: "\033[31m",  # Red
-            State.PENDING: "\033[33m",  # Yellow
-            State.AMBIGUOUS: "\033[34m",  # Blue
-        }
-
-        color = state_colors.get(self.statemsg.state, "\033[0m")
+        color = self.statemsg.state.color
         h_ctx = line_ctx.replace(self.word, f"{h_fr}{color}{self.word}{h_to}")
 
         state_letter = str(self.statemsg.state)[6]
@@ -310,14 +312,22 @@ def _diagnostics(tagged_paragraphs: TaggedText) -> None:
     print(f"* Found {n_total_words} words.")
     print(f"* Found {n_total_states} entries.\n")
 
+    n_errors_without_analysis = record_msgs["2PUNCT"]
     for state, cnt in record_states.items():
-        print(f"* {str(state)[6:]:<9} {cnt}")
+        msg = f"* {state.color}{str(state)[6:]:<9}\033[0m {cnt}"
+        if state == State.INCORRECT:
+            msg += f" ({n_errors_without_analysis} without analysis)"
+        print(msg)
     print()
 
-    if mc := record_msgs.most_common(1):
-        mf_key, mf_count = mc[0]
-        print(f"* The most frequent msg is: '{mf_key}' ({mf_count} times).")
+    upto = min(5, len(record_msgs))
 
+    if mc := record_msgs.most_common(upto):
+        print(f"* The {upto} most frequent msg(s) are:")
+        for mf_msg, mf_count in mc:
+            print(f"  - '{mf_msg}' ({mf_count} times).")
+
+    # Pending information (if any)
     pending_counter = Counter(
         {k: v for k, v in record_statemsgs.items() if k.state == State.PENDING}
     )
@@ -455,7 +465,7 @@ def print_line_info(
             if entry.statemsg.msg == "2PUNCT":
                 print(entry)
             elif not print_statemsg or re.match(print_statemsg, entry.statemsg.msg):
-                entry.show_semantic_info(detail=True)
+                entry.show_semantic_info(detail=False)
 
 
 def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
