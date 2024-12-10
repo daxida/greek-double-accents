@@ -84,7 +84,7 @@ class Entry:
 
     @property
     def line_ctx(self) -> str:
-        fr = max(0, self.word_idx - 1)
+        fr = max(0, self.word_idx - 2)
         to = min(len(self.line), self.word_idx + 5)
         continues = self.word_idx + 5 < len(self.line)
         continues_msg = "[...]" if continues else ""
@@ -152,27 +152,28 @@ class Entry:
         return 0
 
     def show_semantic_info(self, detail: bool = False) -> None:
-        wi = self
-        if not wi.semantic_info:
-            print(f"No semantic info for {self.word}")
-            return
-
         cyan = "\033[36m"
         cend = "\033[0m"
 
-        si1, si2, si3 = wi.semantic_info
-        semantic_info = (
-            f"{cyan}{si1['pos']} {si2['pos']} {si3['pos']}"
-            " || "
-            f"{si1['case']} {si2['case']} {si3['case']}{cend}"
-        )
+        if not self.semantic_info:
+            semantic_info = f"{cyan}No semantic info...{cend}"
+        else:
+            si1, si2, si3 = self.semantic_info
+            semantic_info = (
+                f"{cyan}{si1['pos']} {si2['pos']} {si3['pos']}"
+                " || "
+                f"{si1['case']} {si2['case']} {si3['case']}{cend}"
+            )
+
         print(self if detail else "", semantic_info)
 
     def detailed_str(self) -> str:
-        hstart = "\033[1m"
-        hend = "\033[0m"
-        line_ctx = self.line_ctx.replace("\n", "⏎")
-        hctx = line_ctx.replace(self.word, f"{hstart}{self.word}{hend}")
+        # Highlighting
+        h_fr = "\033[1m"
+        h_red = "\033[31m"
+        h_to = "\033[0m"
+        line_ctx = self.line_ctx.replace("\n", "⏎").strip()
+
         state_colors = {
             State.CORRECT: "\033[32m",  # Green
             State.INCORRECT: "\033[31m",  # Red
@@ -181,8 +182,15 @@ class Entry:
         }
 
         color = state_colors.get(self.statemsg.state, "\033[0m")
-        state_let = str(self.statemsg.state)[6]
-        return f"{color}[{state_let} {self.statemsg.msg:<12}]{hend} {hctx}"
+        h_ctx = line_ctx.replace(self.word, f"{h_fr}{color}{self.word}{h_to}")
+
+        state_letter = str(self.statemsg.state)[6]
+        # TODO: This should be optional to print
+        statemsg_fmt = f"{h_fr}{color}[{state_letter} {self.statemsg.msg}]{h_to} "
+        statemsg_fmt = ""
+        lineno = f"\033[32m{self.line_number}{h_to}"
+
+        return f"{lineno}: {statemsg_fmt}{h_ctx}"
 
     def __str__(self) -> str:
         # return f"{self.state:<15} {self.get_line_ctx}"
@@ -194,7 +202,7 @@ TaggedLine = list[TaggedWord]
 TaggedText = list[list[TaggedLine]]
 
 
-def tag_text(text: str) -> TaggedText:
+def tag_text(text: str, analysis: bool) -> TaggedText:
     """Convert a string into a TaggedText.
 
     In short, a TaggedText is a collection of TaggedWords, which
@@ -207,14 +215,14 @@ def tag_text(text: str) -> TaggedText:
     for parno, paragraph in enumerate(stext, start=1):
         tagged_paragraph = []
         for line in paragraph:
-            line_info = analyze_line(line, parno)
+            line_info = analyze_line(line, parno, analysis)
             tagged_paragraph.append(line_info)
         tagged_paragraphs.append(tagged_paragraph)
 
     return tagged_paragraphs
 
 
-def tagged_text_to_raw(tagged_paragraphs: TaggedText) -> tuple[str, int]:
+def tagged_text_to_string(tagged_paragraphs: TaggedText) -> tuple[str, int]:
     """Convert a TaggedText back to a string.
 
     Returns the fixed text together with the number of errors found.
@@ -242,7 +250,8 @@ def analyze_text(
     text: str,
     *,
     fix: bool = True,
-    print_state: str = "",
+    analysis: bool = False,
+    print_states: list[State] = [],
     print_statemsg: str = "",
     reference_path: Path | None = None,
     diagnostics: bool = False,
@@ -251,14 +260,14 @@ def analyze_text(
 
     Returns the fixed text together with the number of errors found.
     """
-    tagged_paragraphs = tag_text(text)
+    tagged_paragraphs = tag_text(text, analysis)
     if not fix:
         print_tagged_text(
             tagged_paragraphs,
-            print_state=print_state,
+            print_states=print_states,
             print_statemsg=print_statemsg,
         )
-    new_text, n_errors = tagged_text_to_raw(tagged_paragraphs)
+    new_text, n_errors = tagged_text_to_string(tagged_paragraphs)
 
     # For testing
     if reference_path:
@@ -275,17 +284,23 @@ def _diagnostics(tagged_paragraphs: TaggedText) -> None:
     record_statemsgs = Counter()
     record_states = Counter()
     record_msgs = Counter()
+    n_total_words = 0
     for _, entry in deep_flatten(tagged_paragraphs):
+        n_total_words += 1
+
         if entry:
             state = entry.statemsg.state
-            msg: str = entry.statemsg.msg
+            msg = entry.statemsg.msg
             record_statemsgs[entry.statemsg] += 1
             record_states[state] += 1
             record_msgs[msg] += 1
 
     n_total_states = sum(record_states.values())
+
     print("\nDiagnostics")
+    print(f"* Found {n_total_words} words.")
     print(f"* Found {n_total_states} entries.\n")
+
     for state, cnt in record_states.items():
         print(f"* {str(state)[6:]:<9} {cnt}")
     print()
@@ -368,25 +383,28 @@ def compare_with_reference(
     # print(sorted(set(false_negatives)))
 
 
-def analyze_line(words: list[str], lineno: int, cached_doc: Doc | None = None) -> TaggedLine:
+def analyze_line(
+    words: list[str],
+    lineno: int,
+    analysis: bool = False,
+    cached_doc: Doc | None = None,
+) -> TaggedLine:
     line_info = []
-
-    # Tested to correctly work: ignore them (=do not store the entry)
-    to_ignore = ("2~3SYL", "2~CPRON")
 
     for idx, word in enumerate(words):
         info: Entry | None = None
 
         if not simple_word_checks(word, idx, len(words)):
             entry = Entry(word, idx, words, lineno)
+            res = simple_entry_checks(entry)
 
-            statemsg = simple_entry_checks(entry)
-
-            if statemsg is not None:
-                if statemsg.msg not in to_ignore:
-                    entry.statemsg = statemsg
-                    info = entry
-            else:
+            if res is True:
+                # We discard this word
+                pass
+            elif isinstance(res, StateMsg):
+                entry.statemsg = res
+                info = entry
+            elif analysis:
                 cached_doc = cached_doc or nlp(" ".join(words))
                 error_code = entry.add_semantic_info(cached_doc)
                 if error_code != 0:
@@ -404,16 +422,14 @@ def analyze_line(words: list[str], lineno: int, cached_doc: Doc | None = None) -
 def print_tagged_text(
     paragraphs: TaggedText,
     *,
-    print_state: str = "",
-    print_statemsg: str = "",
+    print_states: list[State],
+    print_statemsg: str,
 ) -> None:
-    if not print_state:
-        return
     for paragraph in paragraphs:
         for line_info in paragraph:
             print_line_info(
                 line_info,
-                print_state=print_state,
+                print_states=print_states,
                 print_statemsg=print_statemsg,
             )
 
@@ -421,21 +437,28 @@ def print_tagged_text(
 def print_line_info(
     line_info: TaggedLine,
     *,
-    print_state: str = "",
-    print_statemsg: str = "",
+    print_states: list[State],
+    print_statemsg: str,
 ) -> None:
     for _, entry in line_info:
-        if entry and entry.statemsg.state in print_state:
-            # Custom discard
-            if entry.statemsg.msg != "2PUNCT":
-                if not print_statemsg or re.match(print_statemsg, entry.statemsg.msg):
-                    entry.show_semantic_info(detail=True)
+        if entry and entry.statemsg.state in print_states:
+            # FIX: This branching makes little sense
+            if entry.statemsg.msg == "2PUNCT":
+                print(entry)
+            elif not print_statemsg or re.match(print_statemsg, entry.statemsg.msg):
+                entry.show_semantic_info(detail=True)
 
 
 def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
     """Discard a word based on punctuation and number of syllables.
 
-    Returns True if we can discard the word, False otherwise.
+    Returns True iif we can discard the word (i.e. we do not need to
+    consider this word further).
+
+    We can discard if:
+        - It is at the very end.
+        - It contains punctuation: άνθρωπε,
+        - It is not proparoxytone: το [μάτι] μου,
     """
     # Word is at the end
     if idx == lwords - 1:
@@ -452,22 +475,34 @@ def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
     return False
 
 
-def simple_entry_checks(entry: Entry) -> StateMsg | None:
-    """Check the following word and punctuation.
+def simple_entry_checks(entry: Entry) -> StateMsg | bool:
+    """Check the following word and its punctuation.
 
-    Does NOT use semantic analysis."""
+    Does NOT use semantic analysis. Return:
+        - True if we can discard the word
+        - StateMsg if we can decide on the correctness.
+        - False if we can not decide.
 
-    # Next word (we assume it exists), must be a pronoun
-    detpron, punct = split_punctuation(entry.line[entry.word_idx + 1])
-    if detpron not in PRON:
-        # CPRON = Custom PRON, to differentiate it from spaCy PRON
-        return StateMsg(State.CORRECT, "2~CPRON")
+    At this point, the word is a proparoxytone with no punctuation.
+
+    We can discard if:
+        - The following word is not a pronoun: ανρθώπους [που]
+    We can detect an error if:
+        - The following word is a pronoun with punctuation.
+          Ex. 'άνρθωπε μου,' 'άνοιξε το!'
+    """
+
+    # Next word (we assume it exists, and it should since we excluded
+    # the last word of each sentence), must be a pronoun
+    next_word, punct = split_punctuation(entry.line[entry.word_idx + 1])
+    if next_word not in PRON:
+        return True
 
     # This is a mistake and it is fixable
     if punct:
         return StateMsg(State.INCORRECT, "2PUNCT")
 
-    return None
+    return False
 
 
 def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
@@ -784,6 +819,12 @@ def parse_args() -> Namespace:
         action="store_true",
         help="(DEBUG) Enable diagnostics output",
     )
+    parser.add_argument(
+        "-a",
+        "--analysis",
+        action="store_true",
+        help="(DEBUG) Enable semantic analysis",
+    )
 
     args = parser.parse_args()
 
@@ -812,12 +853,14 @@ def main() -> None:
     new_text, n_errors = analyze_text(
         text,
         fix=args.fix,
-        print_state=args.select,
+        analysis=args.analysis,
+        print_states=args.select,
         print_statemsg=args.message,
         reference_path=args.reference_path,
         diagnostics=args.diagnostics,
     )
-    print(f"{n_errors} errors found [{time() - start:.3f}s]")
+
+    print(f"Found \033[31m{n_errors}\033[0m errors [{time() - start:.3f}s]")
 
     if args.fix:
         opath = args.output_path
