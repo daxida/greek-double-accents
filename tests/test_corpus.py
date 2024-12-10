@@ -1,3 +1,4 @@
+from io import StringIO
 from itertools import zip_longest
 from pathlib import Path
 
@@ -18,7 +19,7 @@ def make_test(corpus_fpath: str) -> None:
     clean_text = clean_corpus_path.open("r", encoding="utf-8").read()
     wrong_text = wrong_corpus_path.open("r", encoding="utf-8").read()
 
-    wrong_text_fixed, _ = analyze_text(wrong_text)
+    wrong_text_fixed, _ = analyze_text(wrong_text, buf=StringIO())
     words_it = zip_longest(clean_text.split(), wrong_text_fixed.split())
 
     fails = 0
