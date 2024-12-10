@@ -404,12 +404,12 @@ def compare_with_reference(
             true_negatives += 1
 
     # False positives/negatives
-    buf.write("                   Predicted Positive    Predicted Negative")
+    buf.write("                   Predicted Positive    Predicted Negative\n")
     buf.write(
-        "Actual Positive    " f"TP: {true_positives}             " f"FN: {len(false_negatives)}"
+        "Actual Positive    " f"TP: {true_positives}             " f"FN: {len(false_negatives)}\n"
     )
     buf.write(
-        "Actual Negative    " f"FP: {len(false_positives)}               " f"TN: {true_negatives}"
+        "Actual Negative    " f"FP: {len(false_positives)}               " f"TN: {true_negatives}\n"
     )
     # relevant_false_positives = [f for f in false_positives if f[-1] in "αο"]
     # relevant_false_positives = sorted(set(relevant_false_positives))
@@ -904,9 +904,10 @@ def main() -> None:
     args = parse_args()
 
     buf = StringIO()
+    first_print = True
 
-    for idx, path in enumerate(args.files):
-        if idx > 0:
+    for path in args.files:
+        if not first_print:
             buf.write("\n")
         buf.write(f"\033[35m{str(path)}\033[0m\n")
 
@@ -938,7 +939,12 @@ def main() -> None:
                 file.write(new_text)
             buf.write(f"The text has been updated in '{opath}'.\n")
 
-        print(buf.getvalue())
+        if n_errors > 0:
+            first_print = False
+            print(buf.getvalue())
+
+        buf.truncate(0)
+        buf.seek(0)
 
 
 if __name__ == "__main__":
