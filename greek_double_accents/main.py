@@ -14,6 +14,7 @@ from argparse import Namespace
 from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
+from io import StringIO
 from pathlib import Path
 from time import time
 from typing import Any, Literal
@@ -268,6 +269,7 @@ def tagged_text_to_string(tagged_paragraphs: TaggedText) -> tuple[str, int]:
 
 def analyze_text(
     text: str,
+    buf: StringIO,
     *,
     fix: bool = True,
     analysis: bool = False,
@@ -285,6 +287,7 @@ def analyze_text(
     if not fix:
         print_tagged_text(
             tagged_paragraphs,
+            buf,
             print_states=print_states,
             print_statemsg=print_statemsg,
             verbose=verbose,
@@ -293,15 +296,15 @@ def analyze_text(
 
     # For testing
     if reference_path:
-        compare_with_reference(tagged_paragraphs, reference_path)
+        compare_with_reference(tagged_paragraphs, buf, reference_path)
 
     if diagnostics:
-        _diagnostics(tagged_paragraphs)
+        _diagnostics(tagged_paragraphs, buf)
 
     return new_text, n_errors
 
 
-def _diagnostics(tagged_paragraphs: TaggedText) -> None:
+def _diagnostics(tagged_paragraphs: TaggedText, buf: StringIO) -> None:
     """Print some extra information about errors."""
     record_statemsgs = Counter()
     record_states = Counter()
@@ -319,24 +322,22 @@ def _diagnostics(tagged_paragraphs: TaggedText) -> None:
 
     n_total_states = sum(record_states.values())
 
-    print("\nDiagnostics")
-    print(f"* Found {n_total_words} words.")
-    print(f"* Found {n_total_states} entries.\n")
-
+    buf.write("\nDiagnostics\n")
+    buf.write(f"* Found {n_total_words} words.\n")
+    buf.write(f"* Found {n_total_states} entries.\n")
     n_errors_without_analysis = record_msgs["2PUNCT"]
     for state, cnt in record_states.items():
-        msg = f"* {state.color}{str(state)[6:]:<9}\033[0m {cnt}"
+        msg = f"  - {state.color}{str(state)[6:]:<9}\033[0m {cnt}"
         if state == State.INCORRECT:
             msg += f" ({n_errors_without_analysis} without analysis)"
-        print(msg)
-    print()
+        buf.write(msg)
+        buf.write("\n")
 
     upto = min(5, len(record_msgs))
-
     if mc := record_msgs.most_common(upto):
-        print(f"* The {upto} most frequent msg(s) are:")
+        buf.write(f"* The {upto} most frequent msg(s) are:\n")
         for mf_msg, mf_count in mc:
-            print(f"  - '{mf_msg}' ({mf_count} times).")
+            buf.write(f"  - '{mf_msg}' ({mf_count} times).\n")
 
     # Pending information (if any)
     pending_counter = Counter(
@@ -344,16 +345,19 @@ def _diagnostics(tagged_paragraphs: TaggedText) -> None:
     )
     if pmc := pending_counter.most_common(1):
         pen_mf_key, pen_mf_count = pmc[0]
-        print(f"* The most frequent (pending) msg is: '{pen_mf_key.msg}' ({pen_mf_count} times).")
+        buf.write(
+            f"* The most frequent (pending) msg is: '{pen_mf_key.msg}' ({pen_mf_count} times).\n"
+        )
 
     not_pending = n_total_states - record_states[State.PENDING]
     if n_total_states:
-        print(f"* Coverage  {100 * not_pending / n_total_states:.02f}%")
-    print()
+        buf.write(f"* Coverage  {100 * not_pending / n_total_states:.02f}%\n")
+        buf.write("\n")
 
 
 def compare_with_reference(
     tagged_paragraphs: TaggedText,
+    buf: StringIO,
     reference_path: Path,
     *,
     print_false_pn: bool = False,
@@ -387,12 +391,12 @@ def compare_with_reference(
         if word == refword and state == State.INCORRECT:
             # These are scary
             if print_false_pn:
-                print(f"\033[41m[FPos]\033[0m: {entry}")
+                buf.write(f"\033[41m[FPos]\033[0m: {entry}\n")
             false_positives.append(word)
         if word != refword and state == State.CORRECT:
             # These are whatever
             if print_false_pn:
-                print(f"\033[43m[FNeg]\033[0m: {entry}")
+                buf.write(f"\033[43m[FNeg]\033[0m: {entry}\n")
             false_negatives.append(word)
         if word == refword and state == State.CORRECT:
             true_positives += 1
@@ -400,9 +404,11 @@ def compare_with_reference(
             true_negatives += 1
 
     # False positives/negatives
-    print("                   Predicted Positive    Predicted Negative")
-    print("Actual Positive    " f"TP: {true_positives}             " f"FN: {len(false_negatives)}")
-    print(
+    buf.write("                   Predicted Positive    Predicted Negative")
+    buf.write(
+        "Actual Positive    " f"TP: {true_positives}             " f"FN: {len(false_negatives)}"
+    )
+    buf.write(
         "Actual Negative    " f"FP: {len(false_positives)}               " f"TN: {true_negatives}"
     )
     # relevant_false_positives = [f for f in false_positives if f[-1] in "αο"]
@@ -451,6 +457,7 @@ def analyze_line(
 
 def print_tagged_text(
     paragraphs: TaggedText,
+    buf: StringIO,
     *,
     print_states: list[State],
     print_statemsg: str,
@@ -460,6 +467,7 @@ def print_tagged_text(
         for line_info in paragraph:
             print_line_info(
                 line_info,
+                buf,
                 print_states=print_states,
                 print_statemsg=print_statemsg,
                 verbose=verbose,
@@ -468,6 +476,7 @@ def print_tagged_text(
 
 def print_line_info(
     line_info: TaggedLine,
+    buf: StringIO,
     *,
     print_states: list[State],
     print_statemsg: str,
@@ -476,7 +485,8 @@ def print_line_info(
     for _, entry in line_info:
         if entry and entry.statemsg.state in print_states:
             if not print_statemsg or re.match(print_statemsg, entry.statemsg.msg):
-                print(entry.fmt(verbose))
+                buf.write(entry.fmt(verbose))
+                buf.write("\n")
 
 
 def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
@@ -893,10 +903,12 @@ def parse_args() -> Namespace:
 def main() -> None:
     args = parse_args()
 
+    buf = StringIO()
+
     for idx, path in enumerate(args.files):
         if idx > 0:
-            print()
-        print(f"\033[35m{str(path)}\033[0m")
+            buf.write("\n")
+        buf.write(f"\033[35m{str(path)}\033[0m\n")
 
         with path.open("r", encoding="utf-8") as file:
             text = file.read().strip()
@@ -904,6 +916,7 @@ def main() -> None:
         start = time()
         new_text, n_errors = analyze_text(
             text,
+            buf,
             fix=args.fix,
             analysis=args.analysis,
             print_states=args.select,
@@ -917,13 +930,15 @@ def main() -> None:
             suggestion = " Pass the --fix flag to fix them."
         else:
             suggestion = ""
-        print(f"[{time() - start:.3f}s] Found \033[31m{n_errors}\033[0m errors.{suggestion}")
+        buf.write(f"[{time() - start:.3f}s] Found \033[31m{n_errors}\033[0m errors.{suggestion}")
 
         if args.fix:
             opath = args.output_path
             with opath.open("w", encoding="utf-8") as file:
                 file.write(new_text)
-            print(f"The text has been updated in '{opath}'.")
+            buf.write(f"The text has been updated in '{opath}'.\n")
+
+        print(buf.getvalue())
 
 
 if __name__ == "__main__":
