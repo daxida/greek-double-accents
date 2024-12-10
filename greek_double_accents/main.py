@@ -532,7 +532,9 @@ def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
 def simple_entry_checks(entry: Entry) -> StateMsg | bool:
     """Check the following word and its punctuation.
 
-    Does NOT use semantic analysis. Return:
+    Does NOT use semantic analysis.
+
+    Return:
         - True if we can discard the word
         - StateMsg if we can decide on the correctness.
         - False if we can not decide.
@@ -540,21 +542,33 @@ def simple_entry_checks(entry: Entry) -> StateMsg | bool:
     At this point, the word is a proparoxytone with no punctuation.
 
     We can discard if:
-        - The following word is not a pronoun: ανρθώπους [που]
-    We can detect an error if:
-        - The following word is a pronoun with punctuation.
-          Ex. 'άνρθωπε μου,' 'άνοιξε το!'
-    """
+        - The next word is not a pronoun: ανρθώπους [που]
+          Note that we are guaranteed to have a following word based
+          on the previous logic.
 
-    # Next word (we assume it exists, and it should since we excluded
-    # the last word of each sentence), must be a pronoun
+    We can detect an error if:
+        There is some sort of stop after the next word (which, at
+        this point, is guaranteed to be a pronoun), either:
+        - The next word contains punctuation.
+          Ex. 'άνρθωπε μου,' 'άνοιξε το!'
+        - The next next word is και or κι.
+    """
     next_word, punct = split_punctuation(entry.line[entry.word_idx + 1])
     if next_word not in PRON:
         return True
 
-    # This is a mistake and it is fixable
     if punct:
         return StateMsg(State.INCORRECT, "2PUNCT")
+
+    # This comes from an observation on the semantic decision tree.
+    # This rule is still there even though now it is unreachable
+    # (at least for και and κι).
+    try:
+        next_next_word = entry.line[entry.word_idx + 2]
+        if next_next_word in {"και", "κι"}:
+            return StateMsg(State.INCORRECT, "3CONJ")
+    except IndexError:
+        pass
 
     return False
 
