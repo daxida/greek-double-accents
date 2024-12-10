@@ -900,6 +900,9 @@ def parse_args() -> Namespace:
             if c not in "ACIP":
                 print(f"select arguments '{c}' need to be in 'ACIP'")
                 exit(1)
+        if not args.analysis and args.select != "I":
+            print("Without analysis the only possible state is INCORRECT")
+            exit(1)
 
     if args.analysis is True:
         lazy_load_spacy_model()
@@ -952,7 +955,11 @@ def main() -> None:
             buf.write(f"The text has been updated in '{opath}'.\n")
 
         if n_errors > 0:
-            print(buf.getvalue())
+            value = buf.getvalue()
+            # Do not only print the path when there is a select option
+            # that does not match any present error in the file.
+            if value.count("\n") > 1:
+                print(value)
 
         buf.truncate(0)
         buf.seek(0)
