@@ -36,23 +36,34 @@ from greek_double_accents.utils import (
 
 WARNINGS = False
 
+ModelName = Literal["el_core_news_sm", "el_core_news_md", "el_core_news_lg"]
 
-# Import spacy model: greek small.
-model_name = "el_core_news_sm"  # sm / md / lg
-try:
-    nlp = spacy.load(
-        model_name,
-        disable=["parser", "ner", "lemmatizer", "textcat"],
-    )
-    # print(nlp.pipe_names)
-    # print(nlp.path)
-except OSError:
-    print(f"Model '{model_name}' not found. Downloading...")
-    spacy.cli.download(model_name)  # type: ignore
-    nlp = spacy.load(
-        model_name,
-        disable=["parser", "ner", "lemmatizer", "textcat"],
-    )
+
+# Make a dummy Callable to please the type checker
+nlp = lambda x: x  # noqa
+
+
+def lazy_load_spacy_model(model_name: ModelName = "el_core_news_sm") -> None:
+    """Populate the global nlp with the Greek model.
+
+    Doing it like this allows not paying the cost of loading
+    the model if we do not use it afterwards.
+    """
+    global nlp
+    try:
+        nlp = spacy.load(
+            model_name,
+            disable=["parser", "ner", "lemmatizer", "textcat"],
+        )
+        # print(nlp.pipe_names)
+        # print(nlp.path)
+    except OSError:
+        print(f"Model '{model_name}' not found. Downloading...")
+        spacy.cli.download(model_name)  # type: ignore
+        nlp = spacy.load(
+            model_name,
+            disable=["parser", "ner", "lemmatizer", "textcat"],
+        )
 
 
 class State(Enum):
@@ -830,6 +841,9 @@ def parse_args() -> Namespace:
 
     if not args.output_path:
         args.output_path = args.input_path
+
+    if args.analysis is True:
+        lazy_load_spacy_model()
 
     state_map = {
         "C": State.CORRECT,
