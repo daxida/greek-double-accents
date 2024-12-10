@@ -42,6 +42,7 @@ def process(text: str) -> tuple[str, str]:
 
 
 def add_errors(text: str) -> str:
+    """Remove last accent from correctly double accented words."""
     n_correct = 0
     stext = split_text(text)
     nstext = []

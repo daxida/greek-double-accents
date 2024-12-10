@@ -64,9 +64,7 @@ def join_words(words: list[list[list[str]]]) -> str:
     """The reverse of split_text."""
     new_pars = []
     for par in words:
-        new_line = []
-        for line in par:
-            new_line.append(" ".join(line))
+        new_line = [" ".join(line) for line in par]
         new_pars.append("".join(new_line))
     return "".join(new_pars)
 

@@ -12,7 +12,7 @@ import argparse
 import re
 from argparse import Namespace
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from time import time
@@ -79,17 +79,13 @@ class StateMsg:
     msg: str
 
 
-DEFAULT_STATEMSG = StateMsg(State.PENDING, "TODO")
-
-
 @dataclass
 class Entry:
     word: str
     word_idx: int
     line: list[str]
     line_number: int = 0
-    # Otherwise mutable default error etc.
-    statemsg: StateMsg = field(default_factory=lambda: DEFAULT_STATEMSG)
+    statemsg: StateMsg = StateMsg(State.PENDING, "TODO")
     semantic_info: list[dict[str, Any]] | None = None
     words: list[str] | None = None
 
@@ -103,7 +99,10 @@ class Entry:
         return f"{ctx} {continues_msg}"
 
     def add_semantic_info(self, doc: Doc) -> Literal[0, 1]:
-        """Returns 0 in case of success."""
+        """Populates self.semantic_info.
+
+        Returns 0 in case of success.
+        """
         if self.word_idx + 3 > len(self.line):
             # Note that this could happen in titles, where there can
             # be no final punctuation.
@@ -181,7 +180,6 @@ class Entry:
     def detailed_str(self) -> str:
         # Highlighting
         h_fr = "\033[1m"
-        h_red = "\033[31m"
         h_to = "\033[0m"
         line_ctx = self.line_ctx.replace("\n", "⏎").strip()
 
