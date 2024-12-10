@@ -366,7 +366,6 @@ def _diagnostics(tagged_paragraphs: TaggedText, buf: StringIO) -> None:
     not_pending = n_total_states - record_states[State.PENDING]
     if n_total_states:
         buf.write(f"* Coverage  {100 * not_pending / n_total_states:.02f}%\n")
-        buf.write("\n")
 
 
 def compare_with_reference(
@@ -872,12 +871,6 @@ def parse_args() -> Namespace:
     )
     parser.add_argument("-m", "--message", type=str, default="", help="State message")
     parser.add_argument(
-        "-o",
-        "--output-path",
-        type=Path,
-        help="Path to the output file",
-    )
-    parser.add_argument(
         "-r",
         "--reference-path",
         type=Path,
@@ -905,9 +898,6 @@ def parse_args() -> Namespace:
     args = parser.parse_args()
 
     args.files = [Path(f) for f in args.files]
-
-    if not args.output_path:
-        args.output_path = Path()
 
     if args.select:
         for c in args.select:
@@ -963,14 +953,12 @@ def main() -> None:
         total_n_errors += n_errors
 
         if args.fix:
-            opath = args.output_path
-            with opath.open("w", encoding="utf-8") as file:
+            with path.open("w", encoding="utf-8") as file:
                 file.write(new_text)
-            buf.write(f"The text has been updated in '{opath}'.\n")
 
         if n_errors > 0:
             value = buf.getvalue()
-            # Do not only print the path when there is a select option
+            # HACK: Do not only print the path when there is a select option
             # that does not match any present error in the file.
             if value.count("\n") > 1:
                 print(value)
@@ -982,7 +970,8 @@ def main() -> None:
         suggestion = " Pass the --fix flag to fix them."
     else:
         suggestion = ""
-    print(f"[{time() - start:.3f}s] Found \033[31m{total_n_errors}\033[0m errors.{suggestion}")
+    verb = "Fixed" if args.fix else "Found"
+    print(f"[{time() - start:.3f}s] {verb} \033[31m{total_n_errors}\033[0m errors.{suggestion}")
 
 
 if __name__ == "__main__":
