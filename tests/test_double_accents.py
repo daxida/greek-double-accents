@@ -2,9 +2,12 @@ from greek_double_accents.main import (
     Entry,
     State,
     StateMsg,
+    lazy_load_spacy_model,
     semantic_analysis,
     simple_entry_checks,
 )
+
+lazy_load_spacy_model()
 
 
 def make_test_simple(
