@@ -1,12 +1,10 @@
-"""
-TODO:
-- Make some tests > Detect False positives
-- Does spacy syllabify? Yes, but low priority (syllabify is fast)
+"""Scan Greek text for missing double accents.
 
-The states need to share prefixes based on detail:
-1VERB > 1VERB 3ADJ etc.
-This makes for easier debugging
+The states share prefixes so they can be selected with the initial
+information: Ex. 1VERB > 1VERB 3ADJ etc.
 """
+
+from __future__ import annotations
 
 import argparse
 import re
@@ -41,7 +39,7 @@ ModelName = Literal["el_core_news_sm", "el_core_news_md", "el_core_news_lg"]
 
 
 # Make a dummy Callable to please the type checker
-nlp = lambda x: x  # noqa
+nlp = lambda x: x  # noqa: E731
 
 
 def lazy_load_spacy_model(model_name: ModelName = "el_core_news_sm") -> None:
@@ -68,6 +66,11 @@ def lazy_load_spacy_model(model_name: ModelName = "el_core_news_sm") -> None:
 
 
 class State(Enum):
+    """State of the word.
+
+    The PENDING state covers unhandled cases.
+    """
+
     CORRECT = "correct"
     INCORRECT = "incorrect"
     PENDING = "pending"
@@ -91,6 +94,8 @@ class StateMsg:
 
 @dataclass
 class Entry:
+    """Container class for context and State."""
+
     word: str
     word_idx: int
     line: list[str]
@@ -102,6 +107,7 @@ class Entry:
 
     @property
     def line_ctx(self) -> str:
+        """Return line context for easier visualization."""
         fr = max(0, self.word_idx - 2)
         to = min(len(self.line), self.word_idx + 5)
         continues = self.word_idx + 5 < len(self.line)
@@ -109,14 +115,17 @@ class Entry:
         ctx = " ".join(self.line[fr:to])
         return f"{ctx} {continues_msg}"
 
-    def add_semantic_info(self, doc: Doc) -> Literal[0, 1]:
-        """Populates self.semantic_info.
+    def add_semantic_info(self, doc: Doc) -> Literal[0, 1]:  # noqa: C901
+        """Populate self.semantic_info.
 
         Returns 0 in case of success.
         """
         self.tried_adding_semantic_info = True
 
-        if self.word_idx + 3 > len(self.line):
+        # Number of words (including self.word) that we consider
+        upto = 3
+
+        if self.word_idx + upto > len(self.line):
             # Note that this could happen in titles, where there can
             # be no final punctuation.
             if WARNINGS:
@@ -124,11 +133,12 @@ class Entry:
                     "Warning "
                     "Faulty sentence with no final punctuation.\n"
                     f"Word: {self.word}\n"
-                    f"Sentence {self.line}"
+                    f"Sentence {self.line}",
                 )
             return 1
 
-        words = [split_punctuation(w)[0] for w in self.line[self.word_idx : self.word_idx + 3]]
+        words_slice = self.line[self.word_idx : self.word_idx + upto]
+        words = [split_punctuation(w)[0] for w in words_slice]
         self.words = words
 
         # Reconcile both splitting methods (can FAIL but rare)
@@ -140,21 +150,21 @@ class Entry:
             cur_idx = len(doc_buf)
             if words[cur_idx] in token.text:
                 doc_buf.append(token)
-                if cur_idx == 2:
+                if cur_idx == upto - 1:
                     break
             else:
                 doc_buf = []
 
         # Can happen if a word in words gets wrongly tagged as PUNCT:
         # Ex. ('δέχεσαι', 'PUNCT')
-        if len(doc_buf) != 3:
+        if len(doc_buf) != upto:
             if WARNINGS:
-                print(f"Warning: doc_buf is of size < 3 for {self.word}")
+                print(f"Warning: doc_buf is of size < {upto} for {self.word}")
             return 1
 
         # The key can't be the word in case of duplicates:
         # words = ['φρούριο', 'σε', 'φρούριο']
-        semantic_info = [{"None": "None"} for _ in range(3)]
+        semantic_info = [{"None": "None"} for _ in range(upto)]
         for idx, token in enumerate(doc_buf):
             word = token.text
             semantic_info[idx] = {}
@@ -168,13 +178,17 @@ class Entry:
             semantic_info[idx]["token"] = token
             semantic_info[idx]["morph"] = token.morph
 
-        assert len(semantic_info) == 3, f"{semantic_info}\n{words}\n{self.word} || {self.line}"
+        if len(semantic_info) != upto:
+            if WARNINGS:
+                print(f"{semantic_info}\n{words}\n{self.word} || {self.line}")
+            return 1
 
         self.semantic_info = semantic_info
 
         return 0
 
     def fmt_semantic_info(self) -> str:
+        """Stringify self.semantic_info."""
         cyan = "\033[36m"
         cend = "\033[0m"
 
@@ -193,7 +207,8 @@ class Entry:
 
         return semantic_info
 
-    def fmt(self, verbose: bool = True) -> str:
+    def fmt(self, *, verbose: bool = True) -> str:
+        """Stringify an Entry."""
         # Highlighting
         h_fr = "\033[1m"
         h_to = "\033[0m"
@@ -214,7 +229,6 @@ class Entry:
         return f"{lineno}: {statemsg_fmt}{h_ctx}{semantic_info}"
 
     def __str__(self) -> str:
-        # return f"{self.state:<15} {self.get_line_ctx}"
         return self.fmt()
 
 
@@ -223,7 +237,7 @@ TaggedLine = list[TaggedWord]
 TaggedText = list[list[TaggedLine]]
 
 
-def tag_text(text: str, analysis: bool) -> TaggedText:
+def tag_text(text: str, *, analysis: bool) -> TaggedText:
     """Convert a string into a TaggedText.
 
     In short, a TaggedText is a collection of TaggedWords, which
@@ -283,7 +297,7 @@ def analyze_text(
 
     Returns the fixed text together with the number of errors found.
     """
-    tagged_paragraphs = tag_text(text, analysis)
+    tagged_paragraphs = tag_text(text, analysis=analysis)
     if not fix:
         print_tagged_text(
             tagged_paragraphs,
@@ -362,9 +376,9 @@ def compare_with_reference(
     *,
     print_false_pn: bool = False,
 ) -> None:
-    """Testing function.
+    """Compare predicted results against actual ones.
 
-    Compares predicted results against actual ones.
+    Function intended for testing.
     """
     ref_text = reference_path.open("r", encoding="utf-8").read().strip()
     ref_words = split_text(ref_text)
@@ -485,7 +499,7 @@ def print_line_info(
     for _, entry in line_info:
         if entry and entry.statemsg.state in print_states:
             if not print_statemsg or re.match(print_statemsg, entry.statemsg.msg):
-                buf.write(entry.fmt(verbose))
+                buf.write(entry.fmt(verbose=verbose))
                 buf.write("\n")
 
 
@@ -546,7 +560,10 @@ def simple_entry_checks(entry: Entry) -> StateMsg | bool:
 
 
 def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
-    """Return True if correct, False if incorrect or undecidable."""
+    """Return a StateMsg with the verdict of the correctness of the word.
+
+    If the return state is PENDING it means we do not deal (yet) with that case.
+    """
     if not entry.semantic_info:
         if WARNINGS:
             print("Warning: this should only happen in tests")
@@ -569,9 +586,7 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
         # Ambiguous: incomplete information
         return StateMsg(State.AMBIGUOUS, "NO INFO")
 
-    _default_statemsg = StateMsg(State.PENDING, f"1{pos1} 2{pos2} 3{pos3}")
-
-    if pos3 in ("CCONJ", "SCONJ"):
+    if pos3 in {"CCONJ", "SCONJ"}:
         # Works like a stop, and so the logic of punctuation
         # seems to also apply here.
         #
@@ -592,13 +607,13 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
         # - το τηλέφωνο σας όταν βρίσκεστε σε
         return StateMsg(State.INCORRECT, "CONJ")
 
-    if pos2 not in ("DET", "PRON", "ADP"):
+    if pos2 not in {"DET", "PRON", "ADP"}:
         # It may be wrongly tagged as NOUN | VERB | ADV | NUM
         return StateMsg(State.AMBIGUOUS, "2POS WRONG")
 
     match pos1:
         case "VERB":
-            # All gerunds + imperative end in α, ε, υ (from ου) or ς
+            # All (gerunds + imperative) end in α, ε, υ (from ου) or ς
             # This quick check detects a lot of correct tenses.
             if w1[-1] not in "αευς":
                 return StateMsg(State.CORRECT, "1VERB ENDING")
@@ -721,8 +736,6 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
                     # / Η κύρια μου τα εξήγησε όλα, [...]
                     return StateMsg(State.AMBIGUOUS, "1NOUN 3DET")
                 case "NOUN" | "PROPN":
-                    # if same_case23:
-                    #     return StateMsg(State.CORRECT, "1NOUN 23SC 3NOUN-PROPN")
                     return StateMsg(State.CORRECT, "1NOUN 3NOUN-PROPN")
                 case "NUM":
                     # - Τον Οκτώβριο του 2007 παρότι ουδέποτε
@@ -813,7 +826,8 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
             # Not NOUN | PROPN | VERB | ADJ | ADV
             return StateMsg(State.CORRECT, "REST")
 
-    return _default_statemsg
+    # Default PENDING message
+    return StateMsg(State.PENDING, f"1{pos1} 2{pos2} 3{pos3}")
 
 
 def parse_args() -> Namespace:
@@ -827,7 +841,8 @@ def parse_args() -> Namespace:
         "files",
         type=str,
         nargs="+",
-        help="File path or glob pattern to process",
+        help="File path or glob pattern to process."
+        " Reminder that (in fish) 'gda **' should reach every .txt file recursively.",
     )
     parser.add_argument(
         "--fix",
@@ -903,18 +918,19 @@ def parse_args() -> Namespace:
 def main() -> None:
     args = parse_args()
 
+    start = time()
     buf = StringIO()
-    first_print = True
+    total_n_errors = 0
 
     for path in args.files:
-        if not first_print:
-            buf.write("\n")
+        if path.suffix != ".txt":
+            continue
+
         buf.write(f"\033[35m{str(path)}\033[0m\n")
 
         with path.open("r", encoding="utf-8") as file:
             text = file.read().strip()
 
-        start = time()
         new_text, n_errors = analyze_text(
             text,
             buf,
@@ -927,11 +943,7 @@ def main() -> None:
             verbose=args.verbose,
         )
 
-        if not args.fix and n_errors > 0:
-            suggestion = " Pass the --fix flag to fix them."
-        else:
-            suggestion = ""
-        buf.write(f"[{time() - start:.3f}s] Found \033[31m{n_errors}\033[0m errors.{suggestion}")
+        total_n_errors += n_errors
 
         if args.fix:
             opath = args.output_path
@@ -940,11 +952,16 @@ def main() -> None:
             buf.write(f"The text has been updated in '{opath}'.\n")
 
         if n_errors > 0:
-            first_print = False
             print(buf.getvalue())
 
         buf.truncate(0)
         buf.seek(0)
+
+    if not args.fix and total_n_errors > 0:
+        suggestion = " Pass the --fix flag to fix them."
+    else:
+        suggestion = ""
+    print(f"[{time() - start:.3f}s] Found \033[31m{total_n_errors}\033[0m errors.{suggestion}")
 
 
 if __name__ == "__main__":
