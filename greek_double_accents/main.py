@@ -257,13 +257,13 @@ def tag_text(text: str, *, analysis: bool) -> TaggedText:
     return tagged_paragraphs
 
 
-def tagged_text_to_string(tagged_paragraphs: TaggedText) -> tuple[str, int]:
+def tagged_text_to_string(tagged_paragraphs: TaggedText) -> tuple[str, list[int]]:
     """Convert a TaggedText back to a string.
 
-    Returns the fixed text together with the number of errors found.
+    Returns the fixed text together with the faulty words found.
     """
     new_paragraphs = []
-    n_errors = 0
+    faulty_words = []
 
     for tagged_paragraph in tagged_paragraphs:
         new_paragraph = []
@@ -273,12 +273,12 @@ def tagged_text_to_string(tagged_paragraphs: TaggedText) -> tuple[str, int]:
                 nword = word
                 if info and info.statemsg.state == State.INCORRECT:
                     nword = add_accent(word)
-                    n_errors += 1
+                    faulty_words.append(word)
                 new_line.append(nword)
             new_paragraph.append(" ".join(new_line))
         new_paragraphs.append("".join(new_paragraph))
 
-    return "".join(new_paragraphs), n_errors
+    return "".join(new_paragraphs), faulty_words
 
 
 def analyze_text(
@@ -292,10 +292,10 @@ def analyze_text(
     reference_path: Path | None = None,
     diagnostics: bool = False,
     verbose: bool = False,
-) -> tuple[str, int]:
+) -> tuple[str, list[int]]:
     """Scan for and fix missing double accents in a string.
 
-    Returns the fixed text together with the number of errors found.
+    Returns the fixed text together with the faulty words found.
     """
     tagged_paragraphs = tag_text(text, analysis=analysis)
     if not fix:
@@ -306,7 +306,8 @@ def analyze_text(
             print_statemsg=print_statemsg,
             verbose=verbose,
         )
-    new_text, n_errors = tagged_text_to_string(tagged_paragraphs)
+
+    new_text, faulty_words = tagged_text_to_string(tagged_paragraphs)
 
     # For testing
     if reference_path:
@@ -315,7 +316,7 @@ def analyze_text(
     if diagnostics:
         _diagnostics(tagged_paragraphs, buf)
 
-    return new_text, n_errors
+    return new_text, faulty_words
 
 
 def _diagnostics(tagged_paragraphs: TaggedText, buf: StringIO) -> None:
@@ -863,6 +864,12 @@ def parse_args() -> Namespace:
         help="Replace the input file",
     )
     parser.add_argument(
+        "-a",
+        "--analysis",
+        action="store_true",
+        help="(Experimental) Enable semantic analysis",
+    )
+    parser.add_argument(
         "-s",
         "--select",
         type=str,
@@ -889,10 +896,9 @@ def parse_args() -> Namespace:
         help="(DEBUG) Print verbose output",
     )
     parser.add_argument(
-        "-a",
-        "--analysis",
+        "--write-errors",
         action="store_true",
-        help="(DEBUG) Enable semantic analysis",
+        help="(DEBUG) Write an errors.txt file with a list unique faulty words",
     )
 
     args = parser.parse_args()
@@ -927,7 +933,7 @@ def main() -> None:
 
     start = time()
     buf = StringIO()
-    total_n_errors = 0
+    all_faulty_words = []
 
     for path in args.files:
         if path.suffix != ".txt":
@@ -938,7 +944,7 @@ def main() -> None:
         with path.open("r", encoding="utf-8") as file:
             text = file.read().strip()
 
-        new_text, n_errors = analyze_text(
+        new_text, faulty_words = analyze_text(
             text,
             buf,
             fix=args.fix,
@@ -950,13 +956,13 @@ def main() -> None:
             verbose=args.verbose,
         )
 
-        total_n_errors += n_errors
+        all_faulty_words.extend(faulty_words)
 
         if args.fix:
             with path.open("w", encoding="utf-8") as file:
                 file.write(new_text)
 
-        if n_errors > 0:
+        if faulty_words:
             value = buf.getvalue()
             # HACK: Do not only print the path when there is a select option
             # that does not match any present error in the file.
@@ -966,12 +972,20 @@ def main() -> None:
         buf.truncate(0)
         buf.seek(0)
 
-    if not args.fix and total_n_errors > 0:
+    if args.write_errors:
+        uniq_faulty_words = sorted({w.lower() for w in all_faulty_words})
+        with Path("errors.txt").open("w") as f:
+            for uniq_word in uniq_faulty_words:
+                f.write(f"{uniq_word}\n")
+
+    if not args.fix and all_faulty_words:
         suggestion = " Pass the --fix flag to fix them."
     else:
         suggestion = ""
     verb = "Fixed" if args.fix else "Found"
-    print(f"[{time() - start:.3f}s] {verb} \033[31m{total_n_errors}\033[0m errors.{suggestion}")
+    print(
+        f"[{time() - start:.3f}s] {verb} \033[31m{len(all_faulty_words)}\033[0m errors.{suggestion}"
+    )
 
 
 if __name__ == "__main__":
