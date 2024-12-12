@@ -523,7 +523,7 @@ def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
 
     # Punctuation automatically makes this word correct
     word, wpunct = split_punctuation(word)
-    if wpunct not in {"...", "…"}:
+    if wpunct and wpunct not in {"...", "…"}:
         return True
 
     if not is_simple_proparoxytone(word):

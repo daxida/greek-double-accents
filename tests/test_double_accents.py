@@ -83,7 +83,12 @@ def test_verb_ambiguous() -> None:
 
 
 def test_word_checks() -> None:
+    assert simple_word_checks("word_at_end", 0, 1) is True
     assert simple_word_checks("προτεύουσα.", 0, 100) is True
+
+
+def test_word_checks_candidate() -> None:
+    assert simple_word_checks("προτεύουσα", 0, 100) is False
 
 
 def test_word_checks_ellipsis() -> None:
