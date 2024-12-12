@@ -15,14 +15,17 @@ def make_test_simple(
     word: str,
     word_idx: int,
     line_str: str,
-    state: State,
+    state_or_bool: State | bool,
     msg: str,
 ) -> None:
     """No semantic info is needed for this."""
     entry = Entry(word, word_idx, line_str.split())
     received = simple_entry_checks(entry)
-    expected = StateMsg(state, msg)
-    assert received == expected
+    if isinstance(state_or_bool, bool):
+        assert received == state_or_bool
+    else:
+        expected = StateMsg(state_or_bool, msg)
+        assert received == expected
 
 
 def make_test(
@@ -62,7 +65,25 @@ def test_incorrect() -> None:
         word="πρωτεύουσα",
         word_idx=1,
         line_str="η πρωτεύουσα του.",
-        state=State.INCORRECT,
+        state_or_bool=State.INCORRECT,
+        msg="2PUNCT",
+    )
+
+
+def test_incorrect_ellipsis() -> None:
+    """Should not return INCORRECT on ellipsis."""
+    make_test_simple(
+        word="πρωτεύουσα",
+        word_idx=1,
+        line_str="η πρωτεύουσα του...",
+        state_or_bool=False,
+        msg="2PUNCT",
+    )
+    make_test_simple(
+        word="πρωτεύουσα",
+        word_idx=1,
+        line_str="η πρωτεύουσα του…",
+        state_or_bool=False,
         msg="2PUNCT",
     )
 
@@ -85,13 +106,4 @@ def test_verb_ambiguous() -> None:
 def test_word_checks() -> None:
     assert simple_word_checks("word_at_end", 0, 1) is True
     assert simple_word_checks("προτεύουσα.", 0, 100) is True
-
-
-def test_word_checks_candidate() -> None:
     assert simple_word_checks("προτεύουσα", 0, 100) is False
-
-
-def test_word_checks_ellipsis() -> None:
-    """Should not return True if ellipsis."""
-    assert simple_word_checks("προτεύουσα...", 0, 100) is False
-    assert simple_word_checks("προτεύουσα…", 0, 100) is False

@@ -511,10 +511,7 @@ def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
 
     We can discard if:
         - It is at the very end.
-        - It contains punctuation but not ellipsis: άνθρωπε,
-          We can not decide on ellipsis, it may be that it indicates
-          a missing following word (instead of let's say, emotion).
-          > Νομίζετε πως εκμεταλλεύεται την...
+        - It contains punctuation: άνθρωπε,
         - It is not proparoxytone: το [μάτι] μου,
     """
     # Word is at the end
@@ -522,8 +519,8 @@ def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
         return True
 
     # Punctuation automatically makes this word correct
-    word, wpunct = split_punctuation(word)
-    if wpunct and wpunct not in {"...", "…"}:
+    word, punct = split_punctuation(word)
+    if punct:
         return True
 
     if not is_simple_proparoxytone(word):
@@ -552,15 +549,18 @@ def simple_entry_checks(entry: Entry) -> StateMsg | bool:
     We can detect an error if:
         There is some sort of stop after the next word (which, at
         this point, is guaranteed to be a pronoun), either:
-        - The next word contains punctuation.
-          Ex. 'άνρθωπε μου,' 'άνοιξε το!'
+        - The next word contains punctuation but NOT ellipsis.
+              Ex. 'άνρθωπε μου,' 'άνοιξε το!'
+          We can not decide on ellipsis, it may indicate
+          a missing following word (instead of let's say, emotion).
+              Ex. Νομίζετε πως εκμεταλλεύεται την...
         - The next next word is και or κι.
     """
     next_word, punct = split_punctuation(entry.line[entry.word_idx + 1])
     if next_word not in PRON:
         return True
 
-    if punct:
+    if punct and punct not in {"...", "…"}:
         return StateMsg(State.INCORRECT, "2PUNCT")
 
     # This comes from an observation on the semantic decision tree.
