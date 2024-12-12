@@ -511,7 +511,10 @@ def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
 
     We can discard if:
         - It is at the very end.
-        - It contains punctuation: άνθρωπε,
+        - It contains punctuation but not ellipsis: άνθρωπε,
+          We can not decide on ellipsis, it may be that it indicates
+          a missing following word (instead of let's say, emotion).
+          > Νομίζετε πως εκμεταλλεύεται την...
         - It is not proparoxytone: το [μάτι] μου,
     """
     # Word is at the end
@@ -520,7 +523,7 @@ def simple_word_checks(word: str, idx: int, lwords: int) -> bool:
 
     # Punctuation automatically makes this word correct
     word, wpunct = split_punctuation(word)
-    if wpunct:
+    if wpunct not in {"...", "…"}:
         return True
 
     if not is_simple_proparoxytone(word):

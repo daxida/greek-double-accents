@@ -5,6 +5,7 @@ from greek_double_accents.main import (
     lazy_load_spacy_model,
     semantic_analysis,
     simple_entry_checks,
+    simple_word_checks,
 )
 
 lazy_load_spacy_model()
@@ -79,3 +80,13 @@ def test_verb_ambiguous() -> None:
             "είπε": {"pos": "VERB"},
         },
     )
+
+
+def test_word_checks() -> None:
+    assert simple_word_checks("προτεύουσα.", 0, 100) is True
+
+
+def test_word_checks_ellipsis() -> None:
+    """Should not return True if ellipsis."""
+    assert simple_word_checks("προτεύουσα...", 0, 100) is False
+    assert simple_word_checks("προτεύουσα…", 0, 100) is False
