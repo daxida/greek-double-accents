@@ -790,7 +790,7 @@ def semantic_analysis(entry: Entry) -> StateMsg:  # noqa: C901
                     # / οι απόγονοι σου όπως οι κόκκοι [...]
                     return StateMsg(State.INCORRECT, "1ADJ 3ADV")
                 case "DET":
-                    # Note that ίδιο, the main case, is now treated as
+                    # Note that ίδιο, the primary case, is now treated as
                     # false trisyllable.
                     # / τον ίδιο τους τον εαυτό.
                     # / στο ημερολόγιο σας το χρονικό μιας [...]

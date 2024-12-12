@@ -38,6 +38,6 @@ Due to the dangerous thickness of the if forest that constitutes the logic body 
 
 ## Links
 
-The corpora used for testing (which unfortunately, also contains many errors...) were found in [clarin:el](https://inventory.clarin.gr/) at:
+The corpora used for testing (which unfortunately, also contain many errors...) were found in [clarin:el](https://inventory.clarin.gr/) at:
 - [Hellenic National Corpus](https://inventory.clarin.gr/corpus/870)
 - [Educational Textbooks](https://inventory.clarin.gr/corpus/908)
