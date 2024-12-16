@@ -565,10 +565,10 @@ def simple_entry_checks(entry: Entry) -> StateMsg | bool:
 
     # This comes from an observation on the semantic decision tree.
     # This rule is still there even though now it is unreachable
-    # (at least for και and κι).
+    # (at least for the conjunctions listed here).
     try:
         next_next_word = entry.line[entry.word_idx + 2]
-        if next_next_word in {"και", "κι"}:
+        if next_next_word in {"και", "κι", "όταν"}:
             return StateMsg(State.INCORRECT, "3CONJ")
     except IndexError:
         pass

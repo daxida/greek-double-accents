@@ -88,6 +88,17 @@ def test_incorrect_ellipsis() -> None:
     )
 
 
+def test_incorrect_conj() -> None:
+    for word in {"και", "κι", "όταν"}:
+        make_test_simple(
+            word="πρωτεύουσα",
+            word_idx=1,
+            line_str=f"η πρωτεύουσα του {word}",
+            state_or_bool=State.INCORRECT,
+            msg="3CONJ",
+        )
+
+
 def test_verb_ambiguous() -> None:
     # Ο άνθρωπος μου είπε / Ο άνθρωπός μου είπε
     make_test(
