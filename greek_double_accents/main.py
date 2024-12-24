@@ -2,6 +2,9 @@
 
 The states share prefixes so they can be selected with the initial
 information: Ex. 1VERB > 1VERB 3ADJ etc.
+
+To explain the meaning of a spaCy term:
+python3 -c "import spacy; print(spacy.explain('{{term}}'))"
 """
 
 from __future__ import annotations
